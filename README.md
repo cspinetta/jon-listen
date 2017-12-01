@@ -22,6 +22,14 @@ Execute from the terminal:
 cargo run
 ```
 
+## Run benchmarks
+
+Execute from the terminal:
+
+```bash
+cargo bench
+```
+
 ## License
 
 MIT
