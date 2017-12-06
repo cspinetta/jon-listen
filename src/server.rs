@@ -12,18 +12,31 @@ use futures::{Future, Poll};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 
+use std::fs::File;
+use std::io::prelude::*;
+use std::fs::OpenOptions;
+
 pub struct UdpServer {
     pub socket: UdpSocket,
     pub buf: Vec<u8>,
     pub to_send: Option<(usize, SocketAddr)>,
+    pub file: File,
 }
 impl UdpServer {
 
     pub fn new(s: UdpSocket) -> Self {
+
+        let filepath = "foo.txt";
+        let mut options = OpenOptions::new();
+        let mut file: File = options.append(true).create(true).open(filepath).unwrap();
+//        let metadata = file.metadata()?;
+//        println!("File metadata: {:?}", metadata);
+
         UdpServer {
             socket: s,
             to_send: None,
             buf: vec![0u8; 1600],
+            file
         }
     }
 
@@ -34,19 +47,13 @@ impl Future for UdpServer {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<(), io::Error> {
-        loop {
-            // First we check to see if there's a message we need to echo back.
-            // If so then we try to send it back to the original source, waiting
-            // until it's writable and we're able to do so.
-            if let Some((size, peer)) = self.to_send {
-                let amt = try_nb!(self.socket.send_to(&self.buf[..size], &peer));
-                println!("Echoed {}/{} bytes to {}", amt, size, peer);
-                self.to_send = None;
-            }
+        println!("Enter to UdpServer::poll()");
 
-            // If we're here then `to_send` is `None`, so we take a look for the
-            // next message we're going to echo back.
-            self.to_send = Some(try_nb!(self.socket.recv_from(&mut self.buf)));
+        loop {
+            let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
+            self.file.write(&self.buf[..size])?;
+            self.file.flush()?;
+            self.file.sync_data()?;
         }
     }
 }
