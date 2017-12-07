@@ -4,6 +4,8 @@ extern crate pretty_env_logger;
 extern crate config;
 extern crate serde;
 
+extern crate net2;
+
 #[macro_use]
 extern crate serde_derive;
 
@@ -19,11 +21,14 @@ mod settings;
 
 use std::{env, io};
 use std::net::SocketAddr;
+use std::thread;
 use std::sync::Arc;
 
 use futures::{Future, Poll};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
+
+use net2::unix::UnixUdpBuilderExt;
 
 use settings::Settings;
 use server::UdpServer;
@@ -43,19 +48,35 @@ fn main() {
 fn start_server(settings: Arc<Settings>) {
 
     let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
+    let addr = Arc::new(addr);
 
-    // Create the event loop that will drive this server, and also bind the
-    // socket we'll be listening to.
-    let mut l = Core::new().unwrap();
-    let handle = l.handle();
-    let socket = UdpSocket::bind(&addr, &handle).unwrap();
-    info!("Listening on: {}", socket.local_addr().unwrap());
+    let file_provider = Arc::new(FileProvider::new(settings.file.filepath.clone()));
+    let mut threads = Vec::new();
 
-    let file_provider = FileProvider::new(settings.file.filepath.clone());
+    for i in 0..settings.threads {
+        let settings_ref = settings.clone();
+        let file_provider_ref = file_provider.clone();
+        let addr_ref = addr.clone();
+        threads.push(thread::spawn(move || {
+            info!("Spawing thread {}", i);
 
-    // Next we'll create a future to spawn (the one we defined above) and then
-    // we'll run the event loop by running the future.
+            let mut l = Core::new().unwrap();
+            let handle = l.handle();
 
-    l.run(UdpServer::new(socket, file_provider)).unwrap();
+            let udp_socket = net2::UdpBuilder::new_v4().unwrap()
+                .reuse_port(true).unwrap()
+                .bind(addr_ref.as_ref()).unwrap();
+
+            let socket = UdpSocket::from_socket(udp_socket, &handle).unwrap(); // UdpSocket::bind(&addr_ref, &handle).unwrap();
+            l.run(UdpServer::new(socket, file_provider_ref)).unwrap();
+        }));
+    }
+
+    info!("Listening on {} with {} threads...", addr, settings.threads);
+
+    for t in threads {
+        t.join().unwrap();
+    }
+
 }
 

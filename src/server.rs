@@ -20,11 +20,12 @@ pub struct UdpServer {
     pub socket: UdpSocket,
     pub buf: Vec<u8>,
     pub to_send: Option<(usize, SocketAddr)>,
-    pub file_provider: FileProvider,
+    pub file_provider: Arc<FileProvider>,
 }
+
 impl UdpServer {
 
-    pub fn new(s: UdpSocket, file_provider: FileProvider) -> Self {
+    pub fn new(s: UdpSocket, file_provider: Arc<FileProvider>) -> Self {
 
         UdpServer {
             socket: s,
@@ -41,7 +42,7 @@ impl Future for UdpServer {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<(), io::Error> {
-        debug!("Enter to UdpServer::poll()");
+        info!("Enter to UdpServer::poll()");
 
         loop {
             let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
