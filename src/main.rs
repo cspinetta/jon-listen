@@ -17,6 +17,7 @@ extern crate tokio_core;
 extern crate tokio_io;
 
 mod server;
+mod file_provider;
 
 use std::{env, io};
 use std::net::SocketAddr;
@@ -26,6 +27,7 @@ use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 
 use server::UdpServer;
+use file_provider::FileProvider;
 
 fn main() {
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:8080".to_string());
@@ -38,8 +40,10 @@ fn main() {
     let socket = UdpSocket::bind(&addr, &handle).unwrap();
     println!("Listening on: {}", socket.local_addr().unwrap());
 
+    let file_provider = FileProvider::new("foo.log");
+
     // Next we'll create a future to spawn (the one we defined above) and then
     // we'll run the event loop by running the future.
 
-    l.run(UdpServer::new(socket)).unwrap();
+    l.run(UdpServer::new(socket, file_provider)).unwrap();
 }

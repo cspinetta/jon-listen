@@ -1,10 +1,4 @@
 
-//extern crate futures;
-//#[macro_use]
-//extern crate tokio_core;
-//#[macro_use]
-//extern crate tokio_io;
-
 use std::{env, io};
 use std::net::SocketAddr;
 
@@ -14,29 +8,29 @@ use tokio_core::reactor::Core;
 
 use std::fs::File;
 use std::io::prelude::*;
-use std::fs::OpenOptions;
+
+use ::file_provider::FileProvider;
+
+use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::Arc;
+use std::sync::Mutex;
+
 
 pub struct UdpServer {
     pub socket: UdpSocket,
     pub buf: Vec<u8>,
     pub to_send: Option<(usize, SocketAddr)>,
-    pub file: File,
+    pub file_provider: FileProvider,
 }
 impl UdpServer {
 
-    pub fn new(s: UdpSocket) -> Self {
-
-        let filepath = "foo.txt";
-        let mut options = OpenOptions::new();
-        let mut file: File = options.append(true).create(true).open(filepath).unwrap();
-//        let metadata = file.metadata()?;
-//        println!("File metadata: {:?}", metadata);
+    pub fn new(s: UdpSocket, file_provider: FileProvider) -> Self {
 
         UdpServer {
             socket: s,
             to_send: None,
-            buf: vec![0u8; 1600],
-            file
+            buf: vec![0u8; 15000],
+            file_provider
         }
     }
 
@@ -51,9 +45,12 @@ impl Future for UdpServer {
 
         loop {
             let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
-            self.file.write(&self.buf[..size])?;
-            self.file.flush()?;
-            self.file.sync_data()?;
+            let mut file: Arc<Mutex<File>> = self.file_provider.get().clone();
+//            let mut file: File = unsafe { **file.get_mut() };
+            let mut file = file.lock().unwrap();
+            (*file).write(&self.buf[..size])?;
+            (*file).flush()?;
+            (*file).sync_data()?;
         }
     }
 }
