@@ -15,9 +15,9 @@ pub struct FileProvider {
 
 impl FileProvider {
 
-    pub fn new(filepath: &str) -> Self {
-        let file = Arc::new(Mutex::new(Self::handle_file(filepath)));
-        FileProvider { filepath: filepath.to_string(), file }
+    pub fn new(filepath: String) -> Self {
+        let file = Arc::new(Mutex::new(Self::handle_file(&filepath)));
+        FileProvider { filepath, file }
     }
 
     pub fn get(&self) -> Arc<Mutex<File>> {
@@ -25,6 +25,7 @@ impl FileProvider {
     }
 
     fn handle_file(filepath: &str) -> File {
+        info!("Opening file {}", filepath);
         let mut options = OpenOptions::new();
         options.append(true).create(true).open(filepath).unwrap()
     }

@@ -41,12 +41,11 @@ impl Future for UdpServer {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<(), io::Error> {
-        println!("Enter to UdpServer::poll()");
+        debug!("Enter to UdpServer::poll()");
 
         loop {
             let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
             let mut file: Arc<Mutex<File>> = self.file_provider.get().clone();
-//            let mut file: File = unsafe { **file.get_mut() };
             let mut file = file.lock().unwrap();
             (*file).write(&self.buf[..size])?;
             (*file).flush()?;
