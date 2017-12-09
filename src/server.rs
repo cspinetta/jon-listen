@@ -9,7 +9,7 @@ use tokio_core::reactor::Core;
 use std::fs::File;
 use std::io::prelude::*;
 
-use ::file_provider::FileProvider;
+use ::file_writer::FileWriter;
 
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
@@ -20,18 +20,18 @@ pub struct UdpServer {
     pub socket: UdpSocket,
     pub buf: Vec<u8>,
     pub to_send: Option<(usize, SocketAddr)>,
-    pub file_provider: Arc<FileProvider>,
+    pub file_writer: Arc<FileWriter>,
 }
 
 impl UdpServer {
 
-    pub fn new(s: UdpSocket, file_provider: Arc<FileProvider>) -> Self {
+    pub fn new(s: UdpSocket, file_writer: Arc<FileWriter>) -> Self {
 
         UdpServer {
             socket: s,
             to_send: None,
             buf: vec![0u8; 15000],
-            file_provider
+            file_writer
         }
     }
 
@@ -46,11 +46,7 @@ impl Future for UdpServer {
 
         loop {
             let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
-            let mut file: Arc<Mutex<File>> = self.file_provider.get().clone();
-            let mut file = file.lock().unwrap();
-            (*file).write(&self.buf[..size])?;
-            (*file).flush()?;
-            (*file).sync_data()?;
+            self.file_writer.write(Arc::new(&self.buf[..size]));
         }
     }
 }

@@ -1,5 +1,6 @@
 use std::env;
 use config::{Config, File, Environment};
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub struct Server {
@@ -9,7 +10,8 @@ pub struct Server {
 
 #[derive(Debug, Deserialize)]
 pub struct FileConfig {
-    pub filepath: String,
+    pub filedir: PathBuf,
+    pub filename: String,
     pub rotations: i32,
 }
 
