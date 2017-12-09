@@ -26,8 +26,10 @@ use glob::PatternError;
 use glob::GlobResult;
 use glob::GlobError;
 
-use std::sync::mpsc::{channel, Sender, Receiver, RecvError};
+use std::sync::mpsc::{sync_channel, SyncSender, Receiver, RecvError};
 
+
+const BUFFER_BOUND: usize = 10000;
 
 pub struct FileWriter {
     file_dir_path: PathBuf,
@@ -35,7 +37,7 @@ pub struct FileWriter {
     file_name: String,
     max_files: i32,
     file: File,
-    pub tx: Sender<FileWriterCommand>,
+    pub tx: SyncSender<FileWriterCommand>,
     rx: Receiver<FileWriterCommand>,
 }
 
@@ -46,7 +48,7 @@ impl FileWriter {
         file_path.push(file_name.clone());
         let file = Self::open_file(&file_path);
 
-        let (tx, rx) = channel();
+        let (tx, rx) = sync_channel(BUFFER_BOUND);
 
         FileWriter { file_dir_path, file_path, file_name, max_files, file, tx, rx }
     }
@@ -84,8 +86,6 @@ impl FileWriter {
 
     pub fn write(&mut self, buf: &[u8]) -> Result<(), String> {
         debug!("Writing to file {:?}", self.file);
-//        let mut file: Arc<Mutex<File>> = self.file.clone();
-//        let mut file = file.lock().unwrap();
         self.file.write(buf).unwrap();
         self.file.flush().unwrap();
         self.file.sync_data().unwrap();
@@ -99,9 +99,6 @@ impl FileWriter {
     }
 
     fn rotate(&mut self, new_path: PathBuf) -> Result<(), String> {
-//        let mut file = self.file.lock()
-//            .map_err(|x| RotateError::OtherError(format!("Failed trying to get lock. Reason: {}", x)))?;
-
         fs::rename(self.file_path.clone(), new_path.clone())
             .map(|_| {
                 self.file = Self::open_file(&self.file_path.clone());
@@ -122,13 +119,13 @@ struct FileRotation {
     file_path: PathBuf,
     file_name: String,
     max_files: i32,
-    tx_file_writer: Sender<FileWriterCommand>
+    tx_file_writer: SyncSender<FileWriterCommand>
 }
 
 impl FileRotation {
 
     fn new(file_dir_path: PathBuf, file_path: PathBuf, file_name: String, max_files: i32,
-           tx_file_writer: Sender<FileWriterCommand>) -> Self {
+           tx_file_writer: SyncSender<FileWriterCommand>) -> Self {
         FileRotation { file_dir_path, file_path, file_name, max_files, tx_file_writer}
     }
 

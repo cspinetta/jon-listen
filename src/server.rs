@@ -14,20 +14,20 @@ use ::file_writer::FileWriterCommand;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::mpsc::{Sender, RecvError};
+use std::sync::mpsc::{SyncSender, RecvError};
 
 
 pub struct UdpServer {
     pub socket: UdpSocket,
     pub buf: Vec<u8>,
     pub to_send: Option<(usize, SocketAddr)>,
-    pub tx_file_writer: Sender<FileWriterCommand>,
+    pub tx_file_writer: SyncSender<FileWriterCommand>,
     count: i32
 }
 
 impl UdpServer {
 
-    pub fn new(s: UdpSocket, tx_file_writer: Sender<FileWriterCommand>) -> Self {
+    pub fn new(s: UdpSocket, tx_file_writer: SyncSender<FileWriterCommand>) -> Self {
 
         UdpServer {
             socket: s,
@@ -45,11 +45,10 @@ impl Future for UdpServer {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<(), io::Error> {
-        self.count += 1;
-        info!("Poll datagram from server. Count: {}", self.count);
-
         loop {
             let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
+            self.count += 1;
+            info!("Poll datagram from server. Count: {}", self.count);
 //            self.tx_file_writer.send(FileWriterCommand::Write(self.buf[..size].to_vec()));
             self.tx_file_writer.send(FileWriterCommand::WriteDebug(self.buf[..size].to_vec(), self.count));
         }
