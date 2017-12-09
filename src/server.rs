@@ -9,29 +9,32 @@ use tokio_core::reactor::Core;
 use std::fs::File;
 use std::io::prelude::*;
 
-use ::file_writer::FileWriter;
+use ::file_writer::FileWriterCommand;
 
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::mpsc::{Sender, RecvError};
 
 
 pub struct UdpServer {
     pub socket: UdpSocket,
     pub buf: Vec<u8>,
     pub to_send: Option<(usize, SocketAddr)>,
-    pub file_writer: Arc<FileWriter>,
+    pub tx_file_writer: Sender<FileWriterCommand>,
+    count: i32
 }
 
 impl UdpServer {
 
-    pub fn new(s: UdpSocket, file_writer: Arc<FileWriter>) -> Self {
+    pub fn new(s: UdpSocket, tx_file_writer: Sender<FileWriterCommand>) -> Self {
 
         UdpServer {
             socket: s,
             to_send: None,
             buf: vec![0u8; 15000],
-            file_writer
+            tx_file_writer,
+            count: 0
         }
     }
 
@@ -42,11 +45,13 @@ impl Future for UdpServer {
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<(), io::Error> {
-        info!("Enter to UdpServer::poll()");
+        self.count += 1;
+        info!("Poll datagram from server. Count: {}", self.count);
 
         loop {
             let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
-            self.file_writer.write(Arc::new(&self.buf[..size]));
+//            self.tx_file_writer.send(FileWriterCommand::Write(self.buf[..size].to_vec()));
+            self.tx_file_writer.send(FileWriterCommand::WriteDebug(self.buf[..size].to_vec(), self.count));
         }
     }
 }

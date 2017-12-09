@@ -26,40 +26,110 @@ use glob::PatternError;
 use glob::GlobResult;
 use glob::GlobError;
 
+use std::sync::mpsc::{channel, Sender, Receiver, RecvError};
+
 
 pub struct FileWriter {
     file_dir_path: PathBuf,
     file_path: PathBuf,
     file_name: String,
     max_files: i32,
-    file: Arc<Mutex<File>>,
-    file_date: Arc<Mutex<Date<Local>>>,
+    file: File,
+    pub tx: Sender<FileWriterCommand>,
+    rx: Receiver<FileWriterCommand>,
 }
 
 impl FileWriter {
 
     pub fn new(file_dir_path: PathBuf, file_name: String, max_files: i32) -> Self {
-        let file_date = Arc::new(Mutex::new(Local::today()));
-
         let mut file_path = file_dir_path.clone();
         file_path.push(file_name.clone());
+        let file = Self::open_file(&file_path);
 
-        let file = Arc::new(Mutex::new(Self::open_file(&file_path)));
-        FileWriter { file_dir_path, file_path, file_name, max_files, file, file_date }
+        let (tx, rx) = channel();
+
+        FileWriter { file_dir_path, file_path, file_name, max_files, file, tx, rx }
     }
 
-    pub fn write(&self, buf: Arc<&[u8]>) {
-        let mut file: Arc<Mutex<File>> = self.file.clone();
-        let mut file = file.lock().unwrap();
-        (*file).write(buf.as_ref()).unwrap();
-        (*file).flush().unwrap();
-        (*file).sync_data().unwrap();
+    pub fn start(&mut self) -> Result<(), String> {
+        info!("File writer starting");
+        let file_rotation = FileRotation::new(
+            self.file_dir_path.clone(),self.file_path.clone(),
+              self.file_name.clone(), self.max_files, self.tx.clone());
+        let rotation_handle = thread::spawn(move || {
+            file_rotation.start_rotation();
+        });
+        self.listen_commands();
+        rotation_handle.join();
+        Ok(())
+    }
+
+    fn listen_commands(&mut self) -> Result<(), String> {
+        let mut count = 0;
+        loop {
+            let command = self.rx.recv().unwrap();
+            debug!("Command received: {:?}", command);
+            count += 1;
+            match command {
+                FileWriterCommand::WriteDebug(value, i) => {
+                    info!("WriteDebug - In FileWriter: {} - In Server: {}", count, i);
+                    self.write(value.as_slice())?
+                },
+                FileWriterCommand::Write(value) => self.write(value.as_slice())?,
+                FileWriterCommand::Rename(new_path) => self.rotate(new_path)?,
+            }
+        }
+        Ok(())
+    }
+
+    pub fn write(&mut self, buf: &[u8]) -> Result<(), String> {
+        debug!("Writing to file {:?}", self.file);
+//        let mut file: Arc<Mutex<File>> = self.file.clone();
+//        let mut file = file.lock().unwrap();
+        self.file.write(buf).unwrap();
+        self.file.flush().unwrap();
+        self.file.sync_data().unwrap();
+        Ok(())
     }
 
     fn open_file(filepath: &PathBuf) -> File {
         info!("Opening file {:?}", filepath);
         let mut options = OpenOptions::new();
         options.append(true).create(true).open(filepath).unwrap()
+    }
+
+    fn rotate(&mut self, new_path: PathBuf) -> Result<(), String> {
+//        let mut file = self.file.lock()
+//            .map_err(|x| RotateError::OtherError(format!("Failed trying to get lock. Reason: {}", x)))?;
+
+        fs::rename(self.file_path.clone(), new_path.clone())
+            .map(|_| {
+                self.file = Self::open_file(&self.file_path.clone());
+            })
+            .map_err(|e| format!("Failed trying to rename the file {:?} to {:?}. Reason: {}", self.file_path.clone(), new_path, e))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FileWriterCommand {
+    Write(Vec<u8>),
+    Rename(PathBuf),
+    WriteDebug(Vec<u8>, i32),
+}
+
+struct FileRotation {
+    file_dir_path: PathBuf,
+    file_path: PathBuf,
+    file_name: String,
+    max_files: i32,
+    tx_file_writer: Sender<FileWriterCommand>
+}
+
+impl FileRotation {
+
+    fn new(file_dir_path: PathBuf, file_path: PathBuf, file_name: String, max_files: i32,
+           tx_file_writer: Sender<FileWriterCommand>) -> Self {
+        FileRotation { file_dir_path, file_path, file_name, max_files, tx_file_writer}
     }
 
     pub fn start_rotation(&self) {
@@ -79,25 +149,22 @@ impl FileWriter {
             thread::sleep(dur_until_midnight);
         } else {
             info!("it's a new day: {}", &today);
-            match self.rotate() {
+            match self.request_rotate() {
                 Err(err) => {
                     error!("failed trying to rename the file. Reason: {}", String::from(err));
                     thread::sleep_ms(10);
-//                        sleep_for_test();
                 },
-                Ok(name) => {
-                    info!("file rename successfully. It was save as {:?}", name);
+                Ok(new_path) => {
+                    info!("file rename successfully. It was save as {:?}", new_path);
                     *file_date = Local::now();
-//                        sleep_for_test();
                 }
             }
         }
     }
 
-    fn rotate(&self) -> Result<PathBuf, RotateError> {
+    fn request_rotate(&self) -> Result<PathBuf, RotateError> {
 
-//        let files: Vec<PathBuf> = glob(&files_query)?.flat_map(|x| x).collect();
-        let files: Vec<PathBuf> = FileWriter::search_files(self.file_path.clone())?;
+        let files: Vec<PathBuf> = Self::search_files(self.file_path.clone())?;
 
         let new_path = if files.len() >= self.max_files as usize {
             self.oldest_file(&files)?
@@ -105,15 +172,10 @@ impl FileWriter {
             self.next_path(&files)?
         };
 
-        let mut file = self.file.lock()
-            .map_err(|x| RotateError::OtherError(format!("Failed trying to get lock. Reason: {}", x)))?;
+        self.tx_file_writer.send(FileWriterCommand::Rename(new_path.clone()))
+            .map_err(|e| RotateError::OtherError(format!("Error sending RenameCommand: {:?}", e)))?;
 
-        fs::rename(self.file_path.clone(), new_path.clone())
-            .map(|_| {
-                *file = Self::open_file(&self.file_path.clone());
-            })
-            .map(|_| new_path.clone())
-            .map_err(|e| RotateError::OtherError(format!("Failed trying to rename the file {:?} to {:?}. Reason: {}", self.file_path.clone(), new_path, e)))
+        Ok(new_path)
     }
 
     fn search_files(path: PathBuf) -> Result<Vec<PathBuf>, RotateError> {
