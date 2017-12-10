@@ -6,7 +6,7 @@ threads = 10
 host = "0.0.0.0"
 port = 8080
 
-[file]
+[file_writer]
 filedir = "./"
 filename = "log"
 rotations = 10

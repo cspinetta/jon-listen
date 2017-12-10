@@ -24,8 +24,8 @@ extern crate tokio_core;
 #[macro_use]
 extern crate tokio_io;
 
-mod server;
-mod file_writer;
+mod listener;
+mod writer;
 mod settings;
 
 use std::{env, io};
@@ -41,8 +41,8 @@ use tokio_core::reactor::Core;
 use net2::unix::UnixUdpBuilderExt;
 
 use settings::Settings;
-use server::UdpServer;
-use file_writer::FileWriter;
+use listener::udp_server::UdpServer;
+use writer::file_writer::FileWriter;
 
 fn main() {
     pretty_env_logger::init().unwrap();
@@ -61,7 +61,7 @@ fn start_server(settings: Arc<Settings>) {
     let addr = Arc::new(addr);
 
     let mut file_writer = FileWriter::new(
-        settings.file.filedir.clone(), settings.file.filename.clone(), settings.file.rotations);
+        settings.file_writer.filedir.clone(), settings.file_writer.filename.clone(), settings.file_writer.rotations);
     let mut threads = Vec::new();
 
     for i in 0..settings.threads {

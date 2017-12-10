@@ -9,7 +9,7 @@ use tokio_core::reactor::Core;
 use std::fs::File;
 use std::io::prelude::*;
 
-use ::file_writer::FileWriterCommand;
+use ::writer::file_writer::FileWriterCommand;
 
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;

@@ -20,7 +20,7 @@ pub struct Settings {
     pub debug: bool,
     pub threads: i32,
     pub server: Server,
-    pub file: FileConfig,
+    pub file_writer: FileConfig,
 }
 
 impl Settings {
