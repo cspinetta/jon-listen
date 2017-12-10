@@ -69,7 +69,7 @@ fn start_server(settings: Arc<Settings>) {
         let tx_file_writer = file_writer.tx.clone();
         let addr_ref = addr.clone();
         threads.push(thread::spawn(move || {
-            info!("Spawing thread {}", i);
+            info!("Spawning thread {}", i);
 
             let mut l = Core::new().unwrap();
             let handle = l.handle();
@@ -79,7 +79,7 @@ fn start_server(settings: Arc<Settings>) {
                 .bind(addr_ref.as_ref()).unwrap();
 
             let socket = UdpSocket::from_socket(udp_socket, &handle).unwrap(); // UdpSocket::bind(&addr_ref, &handle).unwrap();
-            l.run(UdpServer::new(socket, tx_file_writer)).unwrap();
+            l.run(UdpServer::new(socket, tx_file_writer, i)).unwrap();
         }));
     }
 

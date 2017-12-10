@@ -29,7 +29,7 @@ use glob::GlobError;
 use std::sync::mpsc::{sync_channel, SyncSender, Receiver, RecvError};
 
 
-const BUFFER_BOUND: usize = 10000;
+const BUFFER_BOUND: usize = 1000;
 
 pub struct FileWriter {
     file_dir_path: PathBuf,
@@ -73,8 +73,8 @@ impl FileWriter {
             debug!("Command received: {:?}", command);
             count += 1;
             match command {
-                FileWriterCommand::WriteDebug(value, i) => {
-                    info!("WriteDebug - In FileWriter: {} - In Server: {}", count, i);
+                FileWriterCommand::WriteDebug(id, value, i) => {
+                    info!("WriteDebug - {} - Count in FileWriter: {} - In Server: {}", id, count, i);
                     self.write(value.as_slice())?
                 },
                 FileWriterCommand::Write(value) => self.write(value.as_slice())?,
@@ -111,7 +111,7 @@ impl FileWriter {
 pub enum FileWriterCommand {
     Write(Vec<u8>),
     Rename(PathBuf),
-    WriteDebug(Vec<u8>, i32),
+    WriteDebug(String, Vec<u8>, i32),
 }
 
 struct FileRotation {

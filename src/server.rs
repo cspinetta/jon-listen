@@ -18,6 +18,8 @@ use std::sync::mpsc::{SyncSender, RecvError};
 
 
 pub struct UdpServer {
+    pub id: i32,
+    pub name: String,
     pub socket: UdpSocket,
     pub buf: Vec<u8>,
     pub to_send: Option<(usize, SocketAddr)>,
@@ -27,9 +29,11 @@ pub struct UdpServer {
 
 impl UdpServer {
 
-    pub fn new(s: UdpSocket, tx_file_writer: SyncSender<FileWriterCommand>) -> Self {
+    pub fn new(s: UdpSocket, tx_file_writer: SyncSender<FileWriterCommand>, id: i32) -> Self {
 
         UdpServer {
+            id,
+            name: format!("server-udp-{}", id),
             socket: s,
             to_send: None,
             buf: vec![0u8; 15000],
@@ -48,9 +52,9 @@ impl Future for UdpServer {
         loop {
             let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
             self.count += 1;
-            info!("Poll datagram from server. Count: {}", self.count);
+            debug!("Poll datagram from server {}. Count: {}", self.id, self.count);
 //            self.tx_file_writer.send(FileWriterCommand::Write(self.buf[..size].to_vec()));
-            self.tx_file_writer.send(FileWriterCommand::WriteDebug(self.buf[..size].to_vec(), self.count));
+            self.tx_file_writer.send(FileWriterCommand::WriteDebug(self.name.clone(), self.buf[..size].to_vec(), self.count));
         }
     }
 }
