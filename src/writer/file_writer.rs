@@ -28,6 +28,8 @@ use glob::GlobError;
 
 use std::sync::mpsc::{sync_channel, SyncSender, Receiver, RecvError};
 
+use ::settings::Settings;
+
 
 const BUFFER_BOUND: usize = 1000;
 
@@ -39,18 +41,19 @@ pub struct FileWriter {
     file: File,
     pub tx: SyncSender<FileWriterCommand>,
     rx: Receiver<FileWriterCommand>,
+    settings: Arc<Settings>,
 }
 
 impl FileWriter {
 
-    pub fn new(file_dir_path: PathBuf, file_name: String, max_files: i32) -> Self {
+    pub fn new(file_dir_path: PathBuf, file_name: String, max_files: i32, settings: Arc<Settings>) -> Self {
         let mut file_path = file_dir_path.clone();
         file_path.push(file_name.clone());
         let file = Self::open_file(&file_path);
 
         let (tx, rx) = sync_channel(BUFFER_BOUND);
 
-        FileWriter { file_dir_path, file_path, file_name, max_files, file, tx, rx }
+        FileWriter { file_dir_path, file_path, file_name, max_files, file, tx, rx, settings }
     }
 
     pub fn start(&mut self) -> Result<(), String> {

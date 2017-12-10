@@ -61,7 +61,8 @@ fn start_server(settings: Arc<Settings>) {
     let addr = Arc::new(addr);
 
     let mut file_writer = FileWriter::new(
-        settings.file_writer.filedir.clone(), settings.file_writer.filename.clone(), settings.file_writer.rotations);
+        settings.file_writer.filedir.clone(), settings.file_writer.filename.clone(),
+        settings.file_writer.rotations, settings.clone());
     let mut threads = Vec::new();
 
     for i in 0..settings.threads {
@@ -79,7 +80,7 @@ fn start_server(settings: Arc<Settings>) {
                 .bind(addr_ref.as_ref()).unwrap();
 
             let socket = UdpSocket::from_socket(udp_socket, &handle).unwrap(); // UdpSocket::bind(&addr_ref, &handle).unwrap();
-            l.run(UdpServer::new(socket, tx_file_writer, i)).unwrap();
+            l.run(UdpServer::new(socket, tx_file_writer, i, settings_ref)).unwrap();
         }));
     }
 

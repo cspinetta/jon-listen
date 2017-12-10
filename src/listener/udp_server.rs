@@ -10,6 +10,7 @@ use std::fs::File;
 use std::io::prelude::*;
 
 use ::writer::file_writer::FileWriterCommand;
+use ::settings::Settings;
 
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
@@ -24,12 +25,13 @@ pub struct UdpServer {
     pub buf: Vec<u8>,
     pub to_send: Option<(usize, SocketAddr)>,
     pub tx_file_writer: SyncSender<FileWriterCommand>,
+    settings: Arc<Settings>,
     count: i32
 }
 
 impl UdpServer {
 
-    pub fn new(s: UdpSocket, tx_file_writer: SyncSender<FileWriterCommand>, id: i32) -> Self {
+    pub fn new(s: UdpSocket, tx_file_writer: SyncSender<FileWriterCommand>, id: i32, settings: Arc<Settings>) -> Self {
 
         UdpServer {
             id,
@@ -38,6 +40,7 @@ impl UdpServer {
             to_send: None,
             buf: vec![0u8; 15000],
             tx_file_writer,
+            settings,
             count: 0
         }
     }
@@ -52,9 +55,13 @@ impl Future for UdpServer {
         loop {
             let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
             self.count += 1;
-            debug!("Poll datagram from server {}. Count: {}", self.id, self.count);
-//            self.tx_file_writer.send(FileWriterCommand::Write(self.buf[..size].to_vec()));
-            self.tx_file_writer.send(FileWriterCommand::WriteDebug(self.name.clone(), self.buf[..size].to_vec(), self.count));
+            if self.settings.debug {
+                info!("Poll datagram from server {}. Count: {}", self.id, self.count);
+                self.tx_file_writer.send(FileWriterCommand::WriteDebug(self.name.clone(), self.buf[..size].to_vec(), self.count));
+            } else {
+                debug!("Poll datagram from server {}. Count: {}", self.id, self.count);
+                self.tx_file_writer.send(FileWriterCommand::Write(self.buf[..size].to_vec()));
+            }
         }
     }
 }
