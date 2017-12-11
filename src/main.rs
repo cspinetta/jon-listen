@@ -24,8 +24,8 @@ extern crate tokio_core;
 #[macro_use]
 extern crate tokio_io;
 
-mod server;
-mod file_writer;
+mod listener;
+mod writer;
 mod settings;
 
 use std::{env, io};
@@ -41,8 +41,8 @@ use tokio_core::reactor::Core;
 use net2::unix::UnixUdpBuilderExt;
 
 use settings::Settings;
-use server::UdpServer;
-use file_writer::FileWriter;
+use listener::udp_server::UdpServer;
+use writer::file_writer::FileWriter;
 
 fn main() {
     pretty_env_logger::init().unwrap();
@@ -60,16 +60,17 @@ fn start_server(settings: Arc<Settings>) {
     let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
     let addr = Arc::new(addr);
 
-    let file_provider = Arc::new(
-        FileWriter::new(settings.file.filedir.clone(), settings.file.filename.clone(), settings.file.rotations));
+    let mut file_writer = FileWriter::new(
+        settings.file_writer.filedir.clone(), settings.file_writer.filename.clone(),
+        settings.file_writer.rotations, settings.clone());
     let mut threads = Vec::new();
 
     for i in 0..settings.threads {
         let settings_ref = settings.clone();
-        let file_provider_ref = file_provider.clone();
+        let tx_file_writer = file_writer.tx.clone();
         let addr_ref = addr.clone();
         threads.push(thread::spawn(move || {
-            info!("Spawing thread {}", i);
+            info!("Spawning thread {}", i);
 
             let mut l = Core::new().unwrap();
             let handle = l.handle();
@@ -79,18 +80,13 @@ fn start_server(settings: Arc<Settings>) {
                 .bind(addr_ref.as_ref()).unwrap();
 
             let socket = UdpSocket::from_socket(udp_socket, &handle).unwrap(); // UdpSocket::bind(&addr_ref, &handle).unwrap();
-            l.run(UdpServer::new(socket, file_provider_ref)).unwrap();
+            l.run(UdpServer::new(socket, tx_file_writer, i, settings_ref)).unwrap();
         }));
     }
 
     info!("Listening on {} with {} threads...", addr, settings.threads);
 
-    let file_writer_ref = file_provider.clone();
-
-    threads.push(thread::spawn(move || {
-        file_writer_ref.start_rotation();
-    }));
-
+    file_writer.start();
     for t in threads {
         t.join().unwrap();
     }
