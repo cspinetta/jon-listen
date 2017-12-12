@@ -58,9 +58,9 @@ impl FileWriter {
             let command = self.rx.recv()
                 .map_err(|e| format!("Error getting file-write-command from channel: {}", e))?;
             debug!("Command received: {:?}", command);
-            count += 1;
             match command {
                 FileWriterCommand::WriteDebug(id, value, i) => {
+                    count += 1;
                     info!("WriteDebug - {} - Count in FileWriter: {} - In Server: {}", id, count, i);
                     self.write(value.as_slice())?
                 },
