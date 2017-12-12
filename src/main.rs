@@ -1,6 +1,5 @@
 
 #![feature(try_trait)]
-use std::ops::Try;
 
 #[macro_use]
 extern crate log;
@@ -19,7 +18,6 @@ extern crate regex;
 extern crate serde_derive;
 
 extern crate futures;
-#[macro_use]
 extern crate tokio_core;
 #[macro_use]
 extern crate tokio_io;
@@ -28,13 +26,10 @@ mod listener;
 mod writer;
 mod settings;
 
-use std::{env, io};
 use std::net::SocketAddr;
 use std::thread;
 use std::sync::Arc;
-use std::path::Path;
 
-use futures::{Future, Poll};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 

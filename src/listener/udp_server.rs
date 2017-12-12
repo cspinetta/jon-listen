@@ -1,21 +1,15 @@
 
-use std::{env, io};
+use std::io;
 use std::net::SocketAddr;
 
 use futures::{Future, Poll};
 use tokio_core::net::UdpSocket;
-use tokio_core::reactor::Core;
-
-use std::fs::File;
-use std::io::prelude::*;
 
 use ::writer::file_writer::FileWriterCommand;
 use ::settings::Settings;
 
-use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::mpsc::{SyncSender, RecvError};
+use std::sync::mpsc::SyncSender;
 
 
 pub struct UdpServer {
@@ -53,7 +47,7 @@ impl Future for UdpServer {
 
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
-            let (size, peer): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
+            let (size, _): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
             self.count += 1;
             if self.settings.debug {
                 info!("Poll datagram from server {}. Count: {}", self.id, self.count);
