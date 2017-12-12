@@ -32,6 +32,6 @@ cargo bench
 
 ## License
 
-MIT
+Apache-2.0
 
 [Rust]:https://www.rust-lang.org/en-US/index.html
