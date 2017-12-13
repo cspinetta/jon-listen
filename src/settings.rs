@@ -2,20 +2,29 @@ use std::env;
 use config::{Config, File, Environment};
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Server {
     pub host: String,
     pub port: i32,
 }
 
-#[derive(Debug, Deserialize)]
+//#[derive(Debug, Deserialize, Clone)]
+//#[serde(rename_all = "lowercase")]
+//pub enum RotationPolicyType {
+//    ByDuration,
+//    ByDay
+//}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct FileConfig {
     pub filedir: PathBuf,
     pub filename: String,
     pub rotations: i32,
+    pub rotation_policy_type: String,
 }
 
-#[derive(Debug, Deserialize)]
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub debug: bool,
     pub threads: i32,

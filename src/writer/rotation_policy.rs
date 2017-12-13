@@ -27,8 +27,7 @@ impl RotationPolicy for RotationByDuration {
 }
 
 #[derive(Clone)]
-pub struct RotationByDay {
-}
+pub struct RotationByDay;
 
 impl RotationByDay {
 

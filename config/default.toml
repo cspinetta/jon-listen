@@ -10,3 +10,4 @@ port = 8080
 filedir = "./"
 filename = "log"
 rotations = 10
+rotation_policy_type = "ByDay"

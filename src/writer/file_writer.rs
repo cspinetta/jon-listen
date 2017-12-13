@@ -11,9 +11,9 @@ use std::time::Duration;
 
 use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
 
-use ::settings::Settings;
+use ::settings::FileConfig;
 use writer::file_rotation::FileRotation;
-use writer::rotation_policy::RotationByDuration;
+use writer::rotation_policy::{RotationPolicy, RotationByDuration, RotationByDay};
 
 
 const BUFFER_BOUND: usize = 1000;
@@ -26,27 +26,32 @@ pub struct FileWriter {
     file: File,
     pub tx: SyncSender<FileWriterCommand>,
     rx: Receiver<FileWriterCommand>,
-    settings: Arc<Settings>,
+    file_config: FileConfig,
 }
 
 impl FileWriter {
 
-    pub fn new(file_dir_path: PathBuf, file_name: String, max_files: i32, settings: Arc<Settings>) -> Self {
+    pub fn new(file_dir_path: PathBuf, file_name: String, max_files: i32, file_config: FileConfig) -> Self {
         let mut file_path = file_dir_path.clone();
         file_path.push(file_name.clone());
         let file = Self::open_file(&file_path);
 
         let (tx, rx) = sync_channel(BUFFER_BOUND);
 
-        FileWriter { file_dir_path, file_path, file_name, max_files, file, tx, rx, settings }
+        FileWriter { file_dir_path, file_path, file_name, max_files, file, tx, rx, file_config }
     }
 
     pub fn start(&mut self) -> Result<(), String> {
         info!("File writer starting");
-        let rotation_policy = RotationByDuration::new(Duration::from_secs(10));
+        let rotation_policy: Box<RotationPolicy> =
+        if self.file_config.rotation_policy_type == "ByDuration".to_string() {
+            Box::new(RotationByDuration::new(Duration::from_secs(10)))
+        } else {
+            Box::new(RotationByDay::new())
+        };
         let file_rotation = FileRotation::new(
             self.file_dir_path.clone(),self.file_path.clone(),
-              self.file_name.clone(), self.max_files, Box::new(rotation_policy), self.tx.clone());
+              self.file_name.clone(), self.max_files, rotation_policy, self.tx.clone());
         let rotation_handle = thread::spawn(move || {
             file_rotation.start_rotation();
         });
