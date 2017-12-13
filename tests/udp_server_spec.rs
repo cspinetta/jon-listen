@@ -48,24 +48,23 @@ fn it_receives_messages() {
     pretty_env_logger::init().unwrap();
 
     let settings = Arc::new(settings_template());
-    info!("Settings: {:?}", settings);
+    let msg_to_send = "hello\n".as_ref();
 
-    let settings_ref = settings.clone();
+    info!("Settings: {:?}", settings);
 
     let (file_writer_tx, file_writer_rx) = sync_channel(settings.buffer_bound);
     let (server_addr_tx, server_addr_rx) = oneshot::channel();
     let (stop_c, stop_p) = oneshot::channel::<()>();
 
-    let addr = Arc::new(format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap());
-    let addr_ref = addr.clone();
+    let server_addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
+    let settings_ref = settings.clone();
 
-
-    let join_handle = thread::spawn(move || {
+    let server_join = thread::spawn(move || {
 
         let mut l = Core::new().unwrap();
         let handle = l.handle();
 
-        let socket = tokio_core::net::UdpSocket::bind(addr_ref.as_ref(), &handle).unwrap();
+        let socket = tokio_core::net::UdpSocket::bind(&server_addr, &handle).unwrap();
         server_addr_tx.complete(socket.local_addr().unwrap());
 
         let server = udp_server::UdpServer::new(socket, file_writer_tx, 1, settings_ref);
@@ -80,16 +79,15 @@ fn it_receives_messages() {
     let any_addr = "127.0.0.1:0".to_string().parse::<SocketAddr>().unwrap();
     let client = std::net::UdpSocket::bind(&any_addr).unwrap();
 
-    let payload = "hello\n".as_ref();
-
-    client.send_to(&payload, &server_addr).unwrap();
+    client.send_to(&msg_to_send, &server_addr).unwrap();
 
     let received_msg = file_writer_rx.recv_timeout(Duration::from_secs(4));
 
     info!("Received message: {:?}", &received_msg);
+
     assert!(received_msg.is_ok());
-    assert!(matches!(received_msg, Ok(FileWriterCommand::Write(ref v)) if v.as_slice() == payload));
+    assert!(matches!(received_msg, Ok(FileWriterCommand::Write(ref v)) if v.as_slice() == msg_to_send));
 
     stop_c.complete(());
-    join_handle.join().unwrap();
+    server_join.join().unwrap();
 }
