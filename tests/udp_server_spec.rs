@@ -52,11 +52,13 @@ fn it_receives_messages() {
 
     let settings_ref = settings.clone();
 
-    let (tx_file_writer, rx_file_writer) = sync_channel(settings.buffer_bound);
+    let (file_writer_tx, file_writer_rx) = sync_channel(settings.buffer_bound);
+    let (server_addr_tx, server_addr_rx) = oneshot::channel();
+    let (stop_c, stop_p) = oneshot::channel::<()>();
+
     let addr = Arc::new(format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap());
     let addr_ref = addr.clone();
 
-    let (server_addr_tx, server_addr_rx) = oneshot::channel();
 
     let join_handle = thread::spawn(move || {
 
@@ -66,7 +68,11 @@ fn it_receives_messages() {
         let socket = tokio_core::net::UdpSocket::bind(addr_ref.as_ref(), &handle).unwrap();
         server_addr_tx.complete(socket.local_addr().unwrap());
 
-        l.run(udp_server::UdpServer::new(socket, tx_file_writer, 1, settings_ref)).unwrap();
+        let server = udp_server::UdpServer::new(socket, file_writer_tx, 1, settings_ref);
+        let server = server.select(stop_p.map_err(|_| panic!()));
+        let server = server.map_err(|_| ());
+
+        l.run(server).unwrap();
     });
 
     let server_addr = server_addr_rx.wait().unwrap();
@@ -78,9 +84,12 @@ fn it_receives_messages() {
 
     client.send_to(&payload, &server_addr).unwrap();
 
-    let message = rx_file_writer.recv_timeout(Duration::from_secs(4));
+    let received_msg = file_writer_rx.recv_timeout(Duration::from_secs(4));
 
-    info!("Message received: {:?}", &message);
-    assert!(message.is_ok());
-    assert!(matches!(message, Ok(FileWriterCommand::Write(ref v)) if v.as_slice() == payload));
+    info!("Received message: {:?}", &received_msg);
+    assert!(received_msg.is_ok());
+    assert!(matches!(received_msg, Ok(FileWriterCommand::Write(ref v)) if v.as_slice() == payload));
+
+    stop_c.complete(());
+    join_handle.join().unwrap();
 }
