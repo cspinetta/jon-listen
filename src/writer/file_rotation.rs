@@ -38,7 +38,7 @@ impl FileRotation {
         let mut last_rotation = Local::now(); // FIXME: get modified of the current file
         loop {
             info!("loop rotate...");
-            let mut time_for_rotate = self.rotation_policy.next_rotation(last_rotation);
+            let time_for_rotate = self.rotation_policy.next_rotation(last_rotation);
             let now = Local::now();
             if time_for_rotate.gt(&now) {
                 let dur_to_rotate = time_for_rotate.signed_duration_since(now.clone()).to_std().unwrap();

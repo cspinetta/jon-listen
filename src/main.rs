@@ -18,5 +18,4 @@ fn main() {
     let settings = Settings::new();
 
     start_server(Arc::new(settings));
-
 }

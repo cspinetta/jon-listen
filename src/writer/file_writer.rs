@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::fs::OpenOptions;
 
-use std::sync::Arc;
 use std::thread;
 use std::path::PathBuf;
 use std::fs;
@@ -21,7 +20,6 @@ pub struct FileWriter {
     file_dir_path: PathBuf,
     file_path: PathBuf,
     file_name: String,
-    buffer_bound: usize,
     file: File,
     pub tx: SyncSender<FileWriterCommand>,
     rx: Receiver<FileWriterCommand>,
@@ -38,7 +36,7 @@ impl FileWriter {
 
         let (tx, rx) = sync_channel(buffer_bound);
 
-        FileWriter { file_dir_path, file_path, file_name: file_config.filename.clone(), buffer_bound, file, tx, rx, file_config }
+        FileWriter { file_dir_path, file_path, file_name: file_config.filename.clone(), file, tx, rx, file_config }
     }
 
     pub fn start(&mut self) -> Result<(), String> {
