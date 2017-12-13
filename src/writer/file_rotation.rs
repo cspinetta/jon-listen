@@ -8,7 +8,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::prelude::*;
 
 use regex::Regex;
-use time;
 
 use glob::glob;
 use glob::PatternError;
@@ -16,6 +15,7 @@ use glob::GlobError;
 
 use std::sync::mpsc::SyncSender;
 use writer::file_writer::FileWriterCommand;
+use writer::rotation_policy::RotationPolicy;
 
 
 pub struct FileRotation {
@@ -23,41 +23,38 @@ pub struct FileRotation {
     file_path: PathBuf,
     file_name: String,
     max_files: i32,
+    rotation_policy: Box<RotationPolicy>,
     tx_file_writer: SyncSender<FileWriterCommand>
 }
 
 impl FileRotation {
 
     pub fn new(file_dir_path: PathBuf, file_path: PathBuf, file_name: String, max_files: i32,
-           tx_file_writer: SyncSender<FileWriterCommand>) -> Self {
-        FileRotation { file_dir_path, file_path, file_name, max_files, tx_file_writer}
+               rotation_policy: Box<RotationPolicy>, tx_file_writer: SyncSender<FileWriterCommand>) -> Self {
+        FileRotation { file_dir_path, file_path, file_name, max_files, rotation_policy, tx_file_writer}
     }
 
     pub fn start_rotation(&self) {
-        let mut file_date = Local::now(); // FIXME: get modified of the current file
+        let mut last_rotation = Local::now(); // FIXME: get modified of the current file
         loop {
-            self.loop_rotate(&mut file_date);
-        }
-    }
-
-    fn loop_rotate(&self, file_date: &mut DateTime<Local>) {
-        info!("loop rotate...");
-        let today = Local::today();
-        if file_date.date().eq(&today) {
-            info!("I'm in the same day: {}", today);
-            let dur_until_midnight = until_next_midnight(Local::now());
-            info!("next day is {:?}", dur_until_midnight);
-            thread::sleep(dur_until_midnight);
-        } else {
-            info!("it's a new day: {}", &today);
-            match self.request_rotate() {
-                Err(err) => {
-                    error!("failed trying to rename the file. Reason: {}", String::from(err));
-                    thread::sleep(Duration::from_secs(1));
-                },
-                Ok(new_path) => {
-                    info!("file rename successfully. It was save as {:?}", new_path);
-                    *file_date = Local::now();
+            info!("loop rotate...");
+            let mut time_for_rotate = self.rotation_policy.next_rotation(last_rotation);
+            let now = Local::now();
+            if time_for_rotate.gt(&now) {
+                let dur_to_rotate = time_for_rotate.signed_duration_since(now.clone()).to_std().unwrap();
+                info!("Sleep and wait {:?} for the time to rotate", dur_to_rotate);
+                thread::sleep(dur_to_rotate);
+            } else {
+                info!("it's the time to rotate: {}", &now);
+                match self.request_rotate() {
+                    Err(err) => {
+                        error!("Failed trying to rename the file. Reason: {}", String::from(err));
+                        thread::sleep(Duration::from_secs(1));
+                    },
+                    Ok(new_path) => {
+                        info!("File rename successfully. It was save as {:?}", new_path);
+                        last_rotation = now;
+                    }
                 }
             }
         }
@@ -172,11 +169,4 @@ fn system_time_to_date_time(t: SystemTime) -> DateTime<Utc> {
         },
     };
     Utc.timestamp(sec, nsec)
-}
-
-fn until_next_midnight(from: DateTime<Local>) -> Duration {
-    let tomorrow_midnight = (from + time::Duration::days(1)).date().and_hms(0, 0, 0);
-    let duration = tomorrow_midnight.signed_duration_since(from).to_std().unwrap();
-    debug!("Duration between {:?} and {:?}: {:?}", from, tomorrow_midnight, duration);
-    duration
 }

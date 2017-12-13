@@ -1,11 +1,17 @@
 
 #![feature(try_trait)]
+#![feature(custom_derive)]
+#![feature(custom_attribute)]
 
 #[macro_use]
 extern crate log;
 extern crate pretty_env_logger;
-extern crate config;
+
+#[macro_use]
+extern crate serde_derive;
 extern crate serde;
+extern crate toml;
+extern crate config;
 
 extern crate net2;
 
@@ -13,9 +19,6 @@ extern crate chrono;
 extern crate time;
 extern crate glob;
 extern crate regex;
-
-#[macro_use]
-extern crate serde_derive;
 
 extern crate futures;
 extern crate tokio_core;
@@ -55,9 +58,7 @@ fn start_server(settings: Arc<Settings>) {
     let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
     let addr = Arc::new(addr);
 
-    let mut file_writer = FileWriter::new(
-        settings.file_writer.filedir.clone(), settings.file_writer.filename.clone(),
-        settings.file_writer.rotations, settings.clone());
+    let mut file_writer = FileWriter::new(settings.buffer_bound, settings.file_writer.clone());
     let mut threads = Vec::new();
 
     for i in 0..settings.threads {

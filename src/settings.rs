@@ -1,24 +1,54 @@
 use std::env;
 use config::{Config, File, Environment};
 use std::path::PathBuf;
+use serde;
+use serde::de::Deserializer;
+use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+pub trait DeserializeWith: Sized {
+    fn deserialize_with<'de, D>(de: D) -> Result<Self, D::Error>
+        where D: Deserializer<'de>;
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Server {
     pub host: String,
     pub port: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq, Clone)]
+pub enum RotationPolicyType {
+    ByDuration,
+    ByDay
+}
+
+impl DeserializeWith for RotationPolicyType {
+    fn deserialize_with<'de, D>(de: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        let s = String::deserialize(de)?;
+
+        match s.as_ref() {
+            "ByDuration" => Ok(RotationPolicyType::ByDuration),
+            "ByDay" => Ok(RotationPolicyType::ByDay),
+            _ => Err(serde::de::Error::custom("error trying to deserialize rotation policy config"))
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct FileConfig {
     pub filedir: PathBuf,
     pub filename: String,
     pub rotations: i32,
+    pub duration: Option<u64>,
+    #[serde(deserialize_with="RotationPolicyType::deserialize_with")]
+    pub rotation_policy_type: RotationPolicyType,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub debug: bool,
     pub threads: i32,
+    pub buffer_bound: usize,
     pub server: Server,
     pub file_writer: FileConfig,
 }
@@ -49,6 +79,8 @@ impl Settings {
 //        info!("database: {:?}", s.get::<String>("database.url"));
 
         // You can deserialize (and thus freeze) the entire configuration as
-        s.deserialize().unwrap()
+        let settings = s.deserialize().unwrap();
+        info!("Settings: {:?}", settings);
+        settings
     }
 }

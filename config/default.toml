@@ -1,6 +1,7 @@
 
 debug = false
 threads = 10
+buffer_bound = 50
 
 [server]
 host = "0.0.0.0"
@@ -10,3 +11,5 @@ port = 8080
 filedir = "./"
 filename = "log"
 rotations = 10
+rotation_policy_type = "ByDuration"
+duration = 10
