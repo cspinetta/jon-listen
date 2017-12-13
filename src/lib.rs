@@ -25,8 +25,8 @@ extern crate tokio_core;
 #[macro_use]
 extern crate tokio_io;
 
-mod listener;
-mod writer;
+pub mod listener;
+pub mod writer;
 pub mod settings;
 
 use std::net::SocketAddr;
@@ -42,7 +42,7 @@ use settings::Settings;
 use listener::udp_server::UdpServer;
 use writer::file_writer::FileWriter;
 
-pub fn start_server(settings: Arc<Settings>) {
+pub fn start_up(settings: Arc<Settings>) {
 
     let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
     let addr = Arc::new(addr);

@@ -7,7 +7,7 @@ extern crate jon_listen;
 
 use std::sync::Arc;
 
-use jon_listen::start_server;
+use jon_listen::start_up;
 use jon_listen::settings::Settings;
 
 fn main() {
@@ -15,7 +15,7 @@ fn main() {
 
     info!("Starting jon-listen app...");
 
-    let settings = Settings::new();
+    let settings = Settings::load();
 
-    start_server(Arc::new(settings));
+    start_up(Arc::new(settings));
 }
