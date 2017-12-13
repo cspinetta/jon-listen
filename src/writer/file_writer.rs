@@ -7,11 +7,13 @@ use std::sync::Arc;
 use std::thread;
 use std::path::PathBuf;
 use std::fs;
+use std::time::Duration;
 
 use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
 
 use ::settings::Settings;
 use writer::file_rotation::FileRotation;
+use writer::rotation_policy::RotationByDuration;
 
 
 const BUFFER_BOUND: usize = 1000;
@@ -41,9 +43,10 @@ impl FileWriter {
 
     pub fn start(&mut self) -> Result<(), String> {
         info!("File writer starting");
+        let rotation_policy = RotationByDuration::new(Duration::from_secs(10));
         let file_rotation = FileRotation::new(
             self.file_dir_path.clone(),self.file_path.clone(),
-              self.file_name.clone(), self.max_files, self.tx.clone());
+              self.file_name.clone(), self.max_files, Box::new(rotation_policy), self.tx.clone());
         let rotation_handle = thread::spawn(move || {
             file_rotation.start_rotation();
         });
