@@ -54,7 +54,8 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn new() -> Self {
+
+    pub fn load() -> Self {
         let mut s = Config::new();
 
         // Start off by merging in the "default" configuration file

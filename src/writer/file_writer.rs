@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::fs::OpenOptions;
 
-use std::sync::Arc;
 use std::thread;
 use std::path::PathBuf;
 use std::fs;
@@ -21,7 +20,6 @@ pub struct FileWriter {
     file_dir_path: PathBuf,
     file_path: PathBuf,
     file_name: String,
-    buffer_bound: usize,
     file: File,
     pub tx: SyncSender<FileWriterCommand>,
     rx: Receiver<FileWriterCommand>,
@@ -38,7 +36,7 @@ impl FileWriter {
 
         let (tx, rx) = sync_channel(buffer_bound);
 
-        FileWriter { file_dir_path, file_path, file_name: file_config.filename.clone(), buffer_bound, file, tx, rx, file_config }
+        FileWriter { file_dir_path, file_path, file_name: file_config.filename.clone(), file, tx, rx, file_config }
     }
 
     pub fn start(&mut self) -> Result<(), String> {
@@ -61,7 +59,7 @@ impl FileWriter {
     fn listen_commands(&mut self) -> Result<(), String> {
         let mut count = 0;
         loop {
-            let command = self.rx.recv()
+            let mut command = self.rx.recv()
                 .map_err(|e| format!("Error getting file-write-command from channel: {}", e))?;
             debug!("Command received: {:?}", command);
             match command {
@@ -70,7 +68,14 @@ impl FileWriter {
                     info!("WriteDebug - {} - Count in FileWriter: {} - In Server: {}", id, count, i);
                     self.write(value.as_slice())?
                 },
-                FileWriterCommand::Write(value) => self.write(value.as_slice())?,
+                FileWriterCommand::Write(ref value) if value.last().map(|x| x.eq(&('\n' as u8))).unwrap_or(false) => {
+                    self.write(value)?
+                },
+                FileWriterCommand::Write(ref mut value) => {
+                    let value: &mut Vec<u8> = value.as_mut();
+                    value.push('\n' as u8);
+                    self.write((value).as_slice())?
+                },
                 FileWriterCommand::Rename(new_path) => self.rotate(new_path)?,
             }
         }

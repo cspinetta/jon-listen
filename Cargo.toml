@@ -26,3 +26,4 @@ serde = "1.0"
 toml = "0.4"
 
 [dev-dependencies]
+matches = "0.1"

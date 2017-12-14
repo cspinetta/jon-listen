@@ -18,7 +18,7 @@ use test::Bencher;
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 
-#[path="../src/server.rs"]
+#[path="../src/listener/udp_server.rs"]
 mod server;
 
 use server::UdpServer;
