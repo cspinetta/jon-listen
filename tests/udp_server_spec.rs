@@ -44,11 +44,11 @@ fn settings_template() -> Settings {
 }
 
 #[test]
-fn it_receives_messages() {
+fn it_receives_multiple_messages() {
     pretty_env_logger::init().unwrap();
 
     let settings = Arc::new(settings_template());
-    let msg_to_send = "hello\n".as_ref();
+    let msgs: Vec<String> = (0..100).map(|i| format!("Message # {}", i)).collect();
 
     info!("Settings: {:?}", settings);
 
@@ -79,14 +79,18 @@ fn it_receives_messages() {
     let any_addr = "127.0.0.1:0".to_string().parse::<SocketAddr>().unwrap();
     let client = std::net::UdpSocket::bind(&any_addr).unwrap();
 
-    client.send_to(&msg_to_send, &server_addr).unwrap();
+    for msg in &msgs {
+        client.send_to(msg.as_ref(), &server_addr).unwrap();
+    }
 
-    let received_msg = file_writer_rx.recv_timeout(Duration::from_secs(4));
+    for msg in &msgs {
+        let msg: &[u8] = msg.as_ref();
+        let received_msg = file_writer_rx.recv_timeout(Duration::from_secs(4));
+        assert!(received_msg.is_ok());
+        assert!(matches!(received_msg, Ok(FileWriterCommand::Write(ref v)) if v.as_slice() == msg));
+    }
 
-    info!("Received message: {:?}", &received_msg);
-
-    assert!(received_msg.is_ok());
-    assert!(matches!(received_msg, Ok(FileWriterCommand::Write(ref v)) if v.as_slice() == msg_to_send));
+    info!("Received {} messages successfully", msgs.len());
 
     stop_c.complete(());
     server_join.join().unwrap();
