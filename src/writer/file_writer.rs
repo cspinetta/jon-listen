@@ -59,7 +59,7 @@ impl FileWriter {
     fn listen_commands(&mut self) -> Result<(), String> {
         let mut count = 0;
         loop {
-            let command = self.rx.recv()
+            let mut command = self.rx.recv()
                 .map_err(|e| format!("Error getting file-write-command from channel: {}", e))?;
             debug!("Command received: {:?}", command);
             match command {
@@ -68,7 +68,14 @@ impl FileWriter {
                     info!("WriteDebug - {} - Count in FileWriter: {} - In Server: {}", id, count, i);
                     self.write(value.as_slice())?
                 },
-                FileWriterCommand::Write(value) => self.write(value.as_slice())?,
+                FileWriterCommand::Write(ref value) if value.last().map(|x| x.eq(&('\n' as u8))).unwrap_or(false) => {
+                    self.write(value)?
+                },
+                FileWriterCommand::Write(ref mut value) => {
+                    let value: &mut Vec<u8> = value.as_mut();
+                    value.push('\n' as u8);
+                    self.write((value).as_slice())?
+                },
                 FileWriterCommand::Rename(new_path) => self.rotate(new_path)?,
             }
         }
