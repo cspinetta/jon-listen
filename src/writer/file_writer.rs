@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::fs::OpenOptions;
 
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::path::PathBuf;
 use std::fs;
 use std::time::Duration;
@@ -48,12 +48,16 @@ impl FileWriter {
         let file_rotation = FileRotation::new(
             self.file_dir_path.clone(),self.file_path.clone(),
               self.file_name.clone(), self.file_config.rotations, rotation_policy, self.tx.clone());
-        let rotation_handle = thread::spawn(move || {
-            file_rotation.start_rotation();
-        });
-        self.listen_commands();
-        rotation_handle.join();
+        let rotation_handle: JoinHandle<Result<(), String>> = file_rotation.start_async();
+        self.listen_commands()?;
+        rotation_handle.join().unwrap_or_else(|e| Err(format!("Failed trying to join. Reason: {:?}", e)))?;
         Ok(())
+    }
+
+    pub fn start_async(mut self) -> JoinHandle<Result<(), String>> {
+        thread::spawn(move || {
+            self.start()
+        })
     }
 
     fn listen_commands(&mut self) -> Result<(), String> {
@@ -99,6 +103,7 @@ impl FileWriter {
     fn rotate(&mut self, new_path: PathBuf) -> Result<(), String> {
         fs::rename(self.file_path.clone(), new_path.clone())
             .map(|_| {
+                info!("File rename successfully. It was saved as {:?}", new_path);
                 self.file = Self::open_file(&self.file_path.clone());
             })
             .map_err(|e| format!("Failed trying to rename the file {:?} to {:?}. Reason: {}", self.file_path.clone(), new_path, e))
