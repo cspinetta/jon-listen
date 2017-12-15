@@ -1,5 +1,7 @@
 Jon Listen
 =================================
+[![Build Status](https://travis-ci.org/cspinetta/jon-listen.svg?branch=master)](https://travis-ci.org/cspinetta/jon-listen)
+
 An UDP listener to forward data to a file.
 
 Written in [Rust] language.
