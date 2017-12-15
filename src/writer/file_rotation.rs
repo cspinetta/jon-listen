@@ -1,5 +1,5 @@
 
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::path::Path;
 use std::path::PathBuf;
 use std::io;
@@ -34,7 +34,7 @@ impl FileRotation {
         FileRotation { file_dir_path, file_path, file_name, max_files, rotation_policy, tx_file_writer}
     }
 
-    pub fn start_rotation(&self) {
+    pub fn start(&self) -> Result<(), String> {
         let mut last_rotation = Local::now(); // FIXME: get modified of the current file
         loop {
             info!("loop rotate...");
@@ -58,6 +58,13 @@ impl FileRotation {
                 }
             }
         }
+        Ok(())
+    }
+
+    pub fn start_async(self) -> JoinHandle<Result<(), String>> {
+        thread::spawn(move || {
+            self.start()
+        })
     }
 
     fn request_rotate(&self) -> Result<PathBuf, RotateError> {

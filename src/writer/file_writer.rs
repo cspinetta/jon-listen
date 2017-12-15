@@ -48,11 +48,9 @@ impl FileWriter {
         let file_rotation = FileRotation::new(
             self.file_dir_path.clone(),self.file_path.clone(),
               self.file_name.clone(), self.file_config.rotations, rotation_policy, self.tx.clone());
-        let rotation_handle = thread::spawn(move || {
-            file_rotation.start_rotation();
-        });
-        self.listen_commands();
-        rotation_handle.join();
+        let rotation_handle: JoinHandle<Result<(), String>> = file_rotation.start_async();
+        self.listen_commands()?;
+        rotation_handle.join().unwrap_or_else(|e| Err(format!("Failed trying to join. Reason: {:?}", e)))?;
         Ok(())
     }
 
