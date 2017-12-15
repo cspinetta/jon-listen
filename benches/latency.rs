@@ -1,69 +1,73 @@
 #![feature(test)]
 
-extern crate test;
-extern crate futures;
 #[macro_use]
+extern crate log;
+extern crate pretty_env_logger;
+#[macro_use]
+extern crate matches;
+
+extern crate test;
+
 extern crate tokio_core;
 #[macro_use]
 extern crate tokio_io;
 
-use std::io;
-use std::net::SocketAddr;
-use std::thread;
+extern crate futures;
 
-use futures::sync::oneshot;
-use futures::sync::mpsc;
-use futures::{Future, Poll};
-use test::Bencher;
+extern crate jon_listen;
+extern crate net2;
+
+
+use jon_listen::listener::udp_server;
+use jon_listen::writer::file_writer::FileWriterCommand;
+use jon_listen::settings::*;
+
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
+use net2::unix::UnixUdpBuilderExt;
+use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::path::PathBuf;
 
-#[path="../src/listener/udp_server.rs"]
-mod server;
+use test::Bencher;
 
-use server::UdpServer;
+use std::net::SocketAddr;
+use std::thread;
+use std::sync::Arc;
+
+use futures::sync::oneshot;
+use futures::{Future, Poll};
+use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
+
+
+fn settings_template() -> Settings {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards");
+    let filename = format!("writer_test_{}.log", now.subsec_nanos());
+    let server = Server { host: "0.0.0.0".to_string(), port: 9999 };
+    let rotation_policy_type = RotationPolicyType::ByDuration;
+    let file_config = FileConfig { filedir: PathBuf::from(r"/tmp/"), filename, rotations: 10, duration: Option::Some(9999), rotation_policy_type };
+    Settings { debug: false, threads: 1, buffer_bound: 20, server, file_writer: file_config }
+}
 
 #[bench]
-fn udp_echo_latency(b: &mut Bencher) {
-    let any_addr = "127.0.0.1:0".to_string();
-    let any_addr = any_addr.parse::<SocketAddr>().unwrap();
+fn app_latency(b: &mut Bencher) {
+    pretty_env_logger::init().unwrap();
 
-    let (stop_c, stop_p) = oneshot::channel::<()>();
-    let (tx, rx) = oneshot::channel();
+    let settings = Arc::new(settings_template());
+    let settings_ref = settings.clone();
 
-    let child = thread::spawn(move || {
-        let mut l = Core::new().unwrap();
-        let handle = l.handle();
+    info!("Settings: {:?}", settings);
 
-        let socket = tokio_core::net::UdpSocket::bind(&any_addr, &handle).unwrap();
-        tx.complete(socket.local_addr().unwrap());
-
-        let server = UdpServer::new(socket);
-        let server = server.select(stop_p.map_err(|_| panic!()));
-        let server = server.map_err(|_| ());
-        l.run(server).unwrap()
+    let server_join = thread::spawn(move || {
+        jon_listen::start_up(settings_ref);
     });
 
-
+    let server_addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
+    let any_addr = "127.0.0.1:0".to_string().parse::<SocketAddr>().unwrap();
     let client = std::net::UdpSocket::bind(&any_addr).unwrap();
 
-    let server_addr = rx.wait().unwrap();
-    let mut buf = [0u8; 1000];
-
-    // warmup phase; for some reason initial couple of
-    // runs are much slower
-    //
-    // TODO: Describe the exact reasons; caching? branch predictor? lazy closures?
-    for _ in 0..8 {
-        client.send_to(&buf, &server_addr).unwrap();
-        let _ = client.recv_from(&mut buf).unwrap();
-    }
-
     b.iter(|| {
-        client.send_to(&buf, &server_addr).unwrap();
-        let _ = client.recv_from(&mut buf).unwrap();
+        let msg = "ckdlsncldnclnclcs".to_string();
+        client.send_to(msg.as_ref(), &server_addr).unwrap();
     });
 
-    stop_c.complete(());
-    child.join().unwrap();
 }
