@@ -1,0 +1,16 @@
+language: rust
+sudo: false
+
+rust:
+  - nightly
+
+env:
+  - RUST_LOG=info
+
+script:
+  - cargo build
+  - cargo test
+  - cargo doc --no-deps
+
+os:
+  - linux
