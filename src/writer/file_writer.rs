@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::fs::OpenOptions;
 
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::path::PathBuf;
 use std::fs;
 use std::time::Duration;
@@ -54,6 +54,12 @@ impl FileWriter {
         self.listen_commands();
         rotation_handle.join();
         Ok(())
+    }
+
+    pub fn start_async(mut self) -> JoinHandle<Result<(), String>> {
+        thread::spawn(move || {
+            self.start()
+        })
     }
 
     fn listen_commands(&mut self) -> Result<(), String> {
