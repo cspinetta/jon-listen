@@ -103,6 +103,7 @@ impl FileWriter {
     fn rotate(&mut self, new_path: PathBuf) -> Result<(), String> {
         fs::rename(self.file_path.clone(), new_path.clone())
             .map(|_| {
+                info!("File rename successfully. It was saved as {:?}", new_path);
                 self.file = Self::open_file(&self.file_path.clone());
             })
             .map_err(|e| format!("Failed trying to rename the file {:?} to {:?}. Reason: {}", self.file_path.clone(), new_path, e))

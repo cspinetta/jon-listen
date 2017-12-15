@@ -52,7 +52,7 @@ impl FileRotation {
                         thread::sleep(Duration::from_secs(1));
                     },
                     Ok(new_path) => {
-                        info!("File rename successfully. It was save as {:?}", new_path);
+                        info!("File rename requested. It will be saved as {:?}", new_path);
                         last_rotation = now;
                     }
                 }
