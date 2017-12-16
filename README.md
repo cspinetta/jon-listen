@@ -40,7 +40,7 @@ You can provide environment variable to define log level and override configurat
 
 ```toml
 [filewriter.rotation]
-policy = ByDay
+policy = "ByDay"
 ```
 
 *Running with inline environment variable from the terminal:*
