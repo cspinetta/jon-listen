@@ -47,7 +47,7 @@ pub fn start_up(settings: Arc<Settings>) {
     let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
     let addr = Arc::new(addr);
 
-    let mut file_writer = FileWriter::new(settings.buffer_bound, settings.file_writer.clone());
+    let mut file_writer = FileWriter::new(settings.buffer_bound, settings.filewriter.clone());
     let mut threads = Vec::new();
 
     for i in 0..settings.threads {

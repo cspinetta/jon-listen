@@ -37,10 +37,11 @@ use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
 fn settings_template() -> Settings {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards");
     let filename = format!("writer_test_{}.log", now.subsec_nanos());
-    let server = Server { host: "0.0.0.0".to_string(), port: 0 };
-    let rotation_policy_type = RotationPolicyType::ByDuration;
-    let file_config = FileConfig { filedir: PathBuf::from(r"/tmp/"), filename, rotations: 10, duration: Option::default(), rotation_policy_type };
-    Settings { debug: false, threads: 1, buffer_bound: 20, server, file_writer: file_config }
+    let server = ServerConfig { host: "0.0.0.0".to_string(), port: 0 };
+    let rotation_policy_config = RotationPolicyConfig { count: 10, policy: RotationPolicyType::ByDuration, duration: Option::default() };
+    let formatting_config = FormattingConfig { startingmsg: false, endingmsg: false };
+    let file_config = FileWriterConfig { filedir: PathBuf::from(r"/tmp/"), filename, rotation: rotation_policy_config, formatting: formatting_config };
+    Settings { debug: false, threads: 1, buffer_bound: 20, server, filewriter: file_config }
 }
 
 #[test]

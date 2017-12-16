@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use serde;
 use serde::de::Deserializer;
 use serde::Deserialize;
+use config::Source;
 
 pub trait DeserializeWith: Sized {
     fn deserialize_with<'de, D>(de: D) -> Result<Self, D::Error>
@@ -11,7 +12,7 @@ pub trait DeserializeWith: Sized {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Server {
+pub struct ServerConfig {
     pub host: String,
     pub port: i32,
 }
@@ -35,13 +36,25 @@ impl DeserializeWith for RotationPolicyType {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct FileConfig {
+pub struct RotationPolicyConfig {
+    pub count: i32,
+    #[serde(deserialize_with="RotationPolicyType::deserialize_with")]
+    pub policy: RotationPolicyType,
+    pub duration: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct FormattingConfig {
+    pub startingmsg: bool,
+    pub endingmsg: bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct FileWriterConfig {
     pub filedir: PathBuf,
     pub filename: String,
-    pub rotations: i32,
-    pub duration: Option<u64>,
-    #[serde(deserialize_with="RotationPolicyType::deserialize_with")]
-    pub rotation_policy_type: RotationPolicyType,
+    pub rotation: RotationPolicyConfig,
+    pub formatting: FormattingConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -49,8 +62,8 @@ pub struct Settings {
     pub debug: bool,
     pub threads: i32,
     pub buffer_bound: usize,
-    pub server: Server,
-    pub file_writer: FileConfig,
+    pub server: ServerConfig,
+    pub filewriter: FileWriterConfig,
 }
 
 impl Settings {
@@ -77,6 +90,7 @@ impl Settings {
 
         // Now that we're done, let's access our configuration
         info!("Debug: {:?}", s.get_bool("debug"));
+        debug!("Provided settings:  {:?}", s.collect());
 //        info!("database: {:?}", s.get::<String>("database.url"));
 
         // You can deserialize (and thus freeze) the entire configuration as

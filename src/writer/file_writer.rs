@@ -7,10 +7,13 @@ use std::thread::{self, JoinHandle};
 use std::path::PathBuf;
 use std::fs;
 use std::time::Duration;
+use chrono::prelude::*;
+
+use std::borrow::BorrowMut;
 
 use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
 
-use ::settings::FileConfig;
+use ::settings::FileWriterConfig;
 use ::settings::RotationPolicyType;
 use writer::file_rotation::FileRotation;
 use writer::rotation_policy::{RotationPolicy, RotationByDuration, RotationByDay};
@@ -23,16 +26,16 @@ pub struct FileWriter {
     file: File,
     pub tx: SyncSender<FileWriterCommand>,
     rx: Receiver<FileWriterCommand>,
-    file_config: FileConfig,
+    file_config: FileWriterConfig,
 }
 
 impl FileWriter {
 
-    pub fn new(buffer_bound: usize, file_config: FileConfig) -> Self {
+    pub fn new(buffer_bound: usize, file_config: FileWriterConfig) -> Self {
         let file_dir_path = file_config.filedir.clone();
         let mut file_path = file_dir_path.clone();
         file_path.push(file_config.filename.clone());
-        let file = Self::open_file(&file_path);
+        let file = Self::open_file(&file_path, file_config.formatting.startingmsg, true).unwrap();
 
         let (tx, rx) = sync_channel(buffer_bound);
 
@@ -41,13 +44,13 @@ impl FileWriter {
 
     pub fn start(&mut self) -> Result<(), String> {
         info!("File writer starting");
-        let rotation_policy: Box<RotationPolicy> = match self.file_config.rotation_policy_type {
-            RotationPolicyType::ByDuration => Box::new(RotationByDuration::new(Duration::from_secs(self.file_config.duration.unwrap()))),
+        let rotation_policy: Box<RotationPolicy> = match self.file_config.rotation.policy {
+            RotationPolicyType::ByDuration => Box::new(RotationByDuration::new(Duration::from_secs(self.file_config.rotation.duration.unwrap()))),
             RotationPolicyType::ByDay => Box::new(RotationByDay::new())
         };
         let file_rotation = FileRotation::new(
             self.file_dir_path.clone(),self.file_path.clone(),
-              self.file_name.clone(), self.file_config.rotations, rotation_policy, self.tx.clone());
+              self.file_name.clone(), self.file_config.rotation.count, rotation_policy, self.tx.clone());
         let rotation_handle: JoinHandle<Result<(), String>> = file_rotation.start_async();
         self.listen_commands()?;
         rotation_handle.join().unwrap_or_else(|e| Err(format!("Failed trying to join. Reason: {:?}", e)))?;
@@ -87,26 +90,43 @@ impl FileWriter {
     }
 
     pub fn write(&mut self, buf: &[u8]) -> Result<(), String> {
-        debug!("Writing to file {:?}", self.file);
-        self.file.write(buf)
+        Self::write_with(self.file.borrow_mut(), buf)
+    }
+
+    fn write_with(file: &mut File, buf: &[u8]) -> Result<(), String> {
+        debug!("Writing to file {:?}", file);
+        file.write(buf)
             .map_err(|e| format!("Failed trying to write to the log file. Reason: {}", e))?;
         Ok(())
     }
 
-    fn open_file(filepath: &PathBuf) -> File {
+    fn open_file(filepath: &PathBuf, with_starting_msg: bool, keep_content: bool) -> Result<File, String> {
+        let starting_msg = format!("Starting {} at {}\n", filepath.to_string_lossy(), Local::now().to_rfc2822());
         info!("Opening file {:?}", filepath);
+        info!("{}", starting_msg);
         let mut options = OpenOptions::new();
-        options.append(true).create(true).open(filepath)
-            .expect(format!("Open the log file {:?}", filepath).as_ref())
+        let mut options = if keep_content { options.append(true) } else { options.write(true) };
+
+        let mut file = options.create(true).open(filepath)
+            .expect(format!("Open the log file {:?}", filepath).as_ref());
+        if with_starting_msg {
+            Self::write_with(file.borrow_mut(), starting_msg.as_bytes());
+        }
+        Ok(file)
     }
 
     fn rotate(&mut self, new_path: PathBuf) -> Result<(), String> {
         fs::rename(self.file_path.clone(), new_path.clone())
-            .map(|_| {
-                info!("File rename successfully. It was saved as {:?}", new_path);
-                self.file = Self::open_file(&self.file_path.clone());
-            })
             .map_err(|e| format!("Failed trying to rename the file {:?} to {:?}. Reason: {}", self.file_path.clone(), new_path, e))
+            .and_then(|_| {
+                let ending_msg = format!("Ending log as {} at {}\n", new_path.as_path().to_string_lossy(), Local::now().to_rfc2822());
+                info!("File rename successfully. {}", ending_msg);
+                if self.file_config.formatting.endingmsg {
+                    self.write(ending_msg.as_bytes())?;
+                }
+                self.file = Self::open_file(&self.file_path.clone(), self.file_config.formatting.startingmsg, false)?;
+                Ok(())
+            })
     }
 }
 
