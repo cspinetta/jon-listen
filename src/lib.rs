@@ -24,55 +24,61 @@ extern crate futures;
 extern crate tokio_core;
 #[macro_use]
 extern crate tokio_io;
+extern crate tokio_proto;
+extern crate tokio_service;
+
+extern crate bytes;
 
 pub mod listener;
 pub mod writer;
 pub mod settings;
 
 use std::net::SocketAddr;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::sync::Arc;
 
-use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 
-use net2::unix::UnixUdpBuilderExt;
+use tokio_core::net::TcpListener;
 
-use settings::Settings;
-use listener::udp_server::UdpServer;
+use net2::unix::UnixTcpBuilderExt;
+
+use settings::{Settings, ProtocolType};
+use listener::udp_server::start_udp_server;
+use listener::tcp_server::start_tcp_server;
 use writer::file_writer::FileWriter;
+
+use futures::future::{self, FutureResult};
+use futures::{Stream, Sink, Future};
+use tokio_io::{AsyncRead, AsyncWrite};
+use tokio_io::codec::{Framed, Encoder, Decoder};
+
+use bytes::BytesMut;
+use tokio_proto::TcpServer;
+use tokio_proto::pipeline::ServerProto;
+use tokio_service::Service;
+use tokio_service::NewService;
+
+use ::writer::file_writer::FileWriterCommand;
+use std::sync::mpsc::SyncSender;
+
+use std::io;
+use std::str;
+use std::borrow::Borrow;
+
 
 pub fn start_up(settings: Arc<Settings>) {
 
-    let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
-    let addr = Arc::new(addr);
-
     let mut file_writer = FileWriter::new(settings.buffer_bound, settings.filewriter.clone());
-    let mut threads = Vec::new();
 
-    for i in 0..settings.threads {
-        let settings_ref = settings.clone();
-        let tx_file_writer = file_writer.tx.clone();
-        let addr_ref = addr.clone();
-        threads.push(thread::spawn(move || {
-            info!("Spawning thread {}", i);
-
-            let mut l = Core::new().unwrap();
-            let handle = l.handle();
-
-            let udp_socket = net2::UdpBuilder::new_v4().unwrap()
-                .reuse_port(true).unwrap()
-                .bind(addr_ref.as_ref()).unwrap();
-
-            let socket = UdpSocket::from_socket(udp_socket, &handle).unwrap(); // UdpSocket::bind(&addr_ref, &handle).unwrap();
-            l.run(UdpServer::new(socket, tx_file_writer, i, settings_ref)).unwrap();
-        }));
-    }
-
-    info!("Listening on {} with {} threads...", addr, settings.threads);
+    let conn_threads = if settings.server.protocol == ProtocolType::TCP {
+        start_tcp_server(settings.clone(), file_writer.tx.borrow())
+    } else {
+        start_udp_server(settings.clone(), file_writer.tx.borrow())
+    };
 
     file_writer.start();
-    for t in threads {
+    for t in conn_threads {
         t.join().unwrap();
     }
 
