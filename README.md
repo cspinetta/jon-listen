@@ -2,7 +2,7 @@ Jon Listen
 =================================
 [![Build Status](https://travis-ci.org/cspinetta/jon-listen.svg?branch=master)](https://travis-ci.org/cspinetta/jon-listen)
 
-Simple and multithreading UDP listener to forward data to a log file. Also it provide some functionality of a logger such as file rotation, control the number of rotated files, etc.
+Simple and multithreading UDP/TCP listener to forward data to a log file. Also it provide some functionality of a logger such as file rotation, control the number of rotated files, etc.
 
 Written in [Rust] language.
 

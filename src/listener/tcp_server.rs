@@ -25,14 +25,14 @@ use tokio_service::Service;
 use tokio_service::NewService;
 
 use ::writer::file_writer::FileWriterCommand;
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::{SyncSender, SendError};
 
 use std::io;
 use std::str;
 use std::borrow::Borrow;
 
 
-pub fn start_tcp_server(settings: Arc<Settings>, sender: & SyncSender<FileWriterCommand>) -> Vec<JoinHandle<()>> {
+pub fn start_tcp_server(settings: Arc<Settings>, sender: SyncSender<FileWriterCommand>) -> Vec<JoinHandle<()>> {
 
     let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
     let addr = Arc::new(addr);
@@ -41,7 +41,9 @@ pub fn start_tcp_server(settings: Arc<Settings>, sender: & SyncSender<FileWriter
 
     for i in 0..settings.threads {
         let settings_ref = settings.clone();
+        let sender_ref = sender.clone();
         let addr_ref = addr.clone();
+
         threads.push(thread::spawn(move || {
             info!("Spawning thread {}", i);
 
@@ -51,15 +53,14 @@ pub fn start_tcp_server(settings: Arc<Settings>, sender: & SyncSender<FileWriter
             let tcp_listener = net2::TcpBuilder::new_v4().unwrap()
                 .reuse_port(true).unwrap()
                 .bind(addr_ref.clone().as_ref()).unwrap()
-                .listen(128).unwrap();
+                .listen(128).unwrap(); // limit for pending connections. https://stackoverflow.com/a/36597268/3392786
 
             let listener = TcpListener::from_listener(tcp_listener, addr_ref.as_ref(), &handle).unwrap();
 
             let server = listener.incoming().for_each(|(tcp, _)| {
 
                 let (writer, reader) = tcp.framed(LineCodec).split();
-                let service = (|| Ok(Echo)).new_service()?;
-
+                let service = (|| Ok(TcpListenerService::new(i, sender_ref.clone(), settings_ref.clone()))).new_service()?;
 
                 let responses = reader.and_then(move |req| service.call(req));
                 let server = writer.send_all(responses)
@@ -79,13 +80,22 @@ pub fn start_tcp_server(settings: Arc<Settings>, sender: & SyncSender<FileWriter
 
 pub struct LineCodec;
 
+//impl Encoder for LineCodec {
+//    type Item = String;
+//    type Error = io::Error;
+//
+//    fn encode(&mut self, msg: String, buf: &mut BytesMut) -> io::Result<()> {
+//        buf.extend(msg.as_bytes());
+//        buf.extend(b"\n");
+//        Ok(())
+//    }
+//}
+
 impl Encoder for LineCodec {
-    type Item = String;
+    type Item = ();
     type Error = io::Error;
 
-    fn encode(&mut self, msg: String, buf: &mut BytesMut) -> io::Result<()> {
-        buf.extend(msg.as_bytes());
-        buf.extend(b"\n");
+    fn encode(&mut self, msg: (), buf: &mut BytesMut) -> io::Result<()> {
         Ok(())
     }
 }
@@ -96,11 +106,8 @@ impl Decoder for LineCodec {
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<String>> {
         if let Some(i) = buf.iter().position(|&b| b == b'\n') {
-            // remove the serialized frame from the buffer.
-            let line = buf.split_to(i);
-
-            // Also remove the '\n'
-            buf.split_to(1);
+            let line = buf.split_to(i); // remove the serialized frame from the buffer.
+            buf.split_to(1); // Also remove the '\n'
 
             // Turn this data into a UTF string and return it in a Frame.
             match str::from_utf8(&line) {
@@ -114,28 +121,41 @@ impl Decoder for LineCodec {
     }
 }
 
-struct LineProto;
-
-impl<T: AsyncRead + AsyncWrite + 'static> ServerProto<T> for LineProto {
-    type Request = String;
-    type Response = String;
-    type Transport = Framed<T, LineCodec>;
-    type BindTransport = Result<Self::Transport, io::Error>;
-
-    fn bind_transport(&self, io: T) -> Self::BindTransport {
-        Ok(io.framed(LineCodec))
-    }
+struct TcpListenerService {
+    pub id: i32,
+    pub name: String,
+    pub tx_file_writer: SyncSender<FileWriterCommand>,
+    settings: Arc<Settings>,
 }
 
-struct Echo;
+impl TcpListenerService {
 
-impl Service for Echo {
+    pub fn new(id: i32, tx_file_writer: SyncSender<FileWriterCommand>, settings: Arc<Settings>) -> Self {
+
+        TcpListenerService {
+            id,
+            name: format!("server-tcp-{}", id),
+            tx_file_writer,
+            settings
+        }
+    }
+
+}
+
+impl Service for TcpListenerService {
     type Request = String;
-    type Response = String;
+    type Response = ();
     type Error = io::Error;
     type Future = FutureResult<Self::Response, Self::Error>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-        future::ok(req)
+        debug!("Received a log line in {}", self.name);
+        let sent_data = self.tx_file_writer
+            .send(FileWriterCommand::Write(req.clone().into_bytes()));
+        match sent_data {
+            Ok(_)  => future::ok(()),
+            Err(e) => future::err(io::Error::new(io::ErrorKind::Other,
+                                     format!("Error trying to send a log line to write: {}", e)))
+        }
     }
 }

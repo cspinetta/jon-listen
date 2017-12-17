@@ -72,9 +72,9 @@ pub fn start_up(settings: Arc<Settings>) {
     let mut file_writer = FileWriter::new(settings.buffer_bound, settings.filewriter.clone());
 
     let conn_threads = if settings.server.protocol == ProtocolType::TCP {
-        start_tcp_server(settings.clone(), file_writer.tx.borrow())
+        start_tcp_server(settings.clone(), file_writer.tx.clone())
     } else {
-        start_udp_server(settings.clone(), file_writer.tx.borrow())
+        start_udp_server(settings.clone(), file_writer.tx.clone())
     };
 
     file_writer.start();

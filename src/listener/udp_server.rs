@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::sync::mpsc::SyncSender;
 
 
-pub fn start_udp_server(settings: Arc<Settings>, sender: & SyncSender<FileWriterCommand>) -> Vec<JoinHandle<()>> {
+pub fn start_udp_server(settings: Arc<Settings>, sender: SyncSender<FileWriterCommand>) -> Vec<JoinHandle<()>> {
 
     let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
     let addr = Arc::new(addr);
