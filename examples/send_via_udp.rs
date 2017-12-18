@@ -48,11 +48,10 @@ fn settings_template() -> Settings {
     let rotation_policy_config = RotationPolicyConfig { count: 10, policy: RotationPolicyType::ByDuration, duration: Option::Some(9999) };
     let formatting_config = FormattingConfig { startingmsg: false, endingmsg: false };
     let file_config = FileWriterConfig { filedir: PathBuf::from(r"/tmp/"), filename, rotation: rotation_policy_config, formatting: formatting_config };
-    Settings { debug: false, threads: 1, buffer_bound: 20, server, filewriter: file_config }
+    Settings { debug: false, threads: 5, buffer_bound: 20, server, filewriter: file_config }
 }
 
-#[bench]
-fn app_latency(b: &mut Bencher) {
+fn main() {
     pretty_env_logger::init().unwrap();
 
     let settings = Arc::new(settings_template());
@@ -68,9 +67,12 @@ fn app_latency(b: &mut Bencher) {
     let any_addr = "127.0.0.1:0".to_string().parse::<SocketAddr>().unwrap();
     let client = std::net::UdpSocket::bind(&any_addr).unwrap();
 
-    b.iter(|| {
-        let msg = "ckdlsncldnclnclcs".to_string();
+    thread::sleep(Duration::from_millis(1));
+
+    for i in 1..10000 {
+        trace!("Sending message {}", i);
+        let msg = format!("Message # {}", i);
         client.send_to(msg.as_ref(), &server_addr).unwrap();
-    });
+    };
 
 }
