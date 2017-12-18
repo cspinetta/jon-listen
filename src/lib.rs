@@ -39,13 +39,8 @@ use std::sync::Arc;
 
 use tokio_core::reactor::Core;
 
-use tokio_core::net::TcpListener;
-
-use net2::unix::UnixTcpBuilderExt;
-
 use settings::{Settings, ProtocolType};
-use listener::udp_server::start_udp_server;
-use listener::tcp_server::start_tcp_server;
+use listener::Listener;
 use writer::file_writer::FileWriter;
 
 use futures::future::{self, FutureResult};
@@ -59,7 +54,6 @@ use tokio_proto::pipeline::ServerProto;
 use tokio_service::Service;
 use tokio_service::NewService;
 
-use ::writer::file_writer::FileWriterCommand;
 use std::sync::mpsc::SyncSender;
 
 use std::io;
@@ -74,11 +68,7 @@ impl App {
 
         let mut file_writer = FileWriter::new(settings.buffer_bound, settings.filewriter.clone());
 
-        let conn_threads = if settings.server.protocol == ProtocolType::TCP {
-            start_tcp_server(settings.clone(), file_writer.tx.clone())
-        } else {
-            start_udp_server(settings.clone(), file_writer.tx.clone())
-        };
+        let conn_threads = Listener::start(settings.clone(), file_writer.tx.clone());
 
         file_writer.start();
         for t in conn_threads {

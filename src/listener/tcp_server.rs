@@ -11,7 +11,6 @@ use net2;
 use net2::unix::UnixTcpBuilderExt;
 
 use settings::Settings;
-use listener::udp_server::start_udp_server;
 
 use futures::future::{self, FutureResult};
 use futures::{Stream, Sink, Future};
@@ -19,7 +18,6 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::{Framed, Encoder, Decoder};
 
 use bytes::BytesMut;
-use tokio_proto::TcpServer;
 use tokio_proto::pipeline::ServerProto;
 use tokio_service::Service;
 use tokio_service::NewService;
@@ -31,51 +29,55 @@ use std::io;
 use std::str;
 use std::borrow::Borrow;
 
+pub struct TcpServer;
 
-pub fn start_tcp_server(settings: Arc<Settings>, sender: SyncSender<FileWriterCommand>) -> Vec<JoinHandle<()>> {
+impl TcpServer {
 
-    let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
-    let addr = Arc::new(addr);
+    pub fn start(settings: Arc<Settings>, sender: SyncSender<FileWriterCommand>) -> Vec<JoinHandle<()>> {
 
-    let mut threads = Vec::new();
+        let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
+        let addr = Arc::new(addr);
 
-    for i in 0..settings.threads {
-        let settings_ref = settings.clone();
-        let sender_ref = sender.clone();
-        let addr_ref = addr.clone();
+        let mut threads = Vec::new();
 
-        threads.push(thread::spawn(move || {
-            info!("Spawning thread {}", i);
+        for i in 0..settings.threads {
+            let settings_ref = settings.clone();
+            let sender_ref = sender.clone();
+            let addr_ref = addr.clone();
 
-            let mut l = Core::new().unwrap();
-            let handle = l.handle();
+            threads.push(thread::spawn(move || {
+                info!("Spawning thread {}", i);
 
-            let tcp_listener = net2::TcpBuilder::new_v4().unwrap()
-                .reuse_port(true).unwrap()
-                .bind(addr_ref.clone().as_ref()).unwrap()
-                .listen(128).unwrap(); // limit for pending connections. https://stackoverflow.com/a/36597268/3392786
+                let mut l = Core::new().unwrap();
+                let handle = l.handle();
 
-            let listener = TcpListener::from_listener(tcp_listener, addr_ref.as_ref(), &handle).unwrap();
+                let tcp_listener = net2::TcpBuilder::new_v4().unwrap()
+                    .reuse_port(true).unwrap()
+                    .bind(addr_ref.clone().as_ref()).unwrap()
+                    .listen(128).unwrap(); // limit for pending connections. https://stackoverflow.com/a/36597268/3392786
 
-            let server = listener.incoming().for_each(|(tcp, _)| {
+                let listener = TcpListener::from_listener(tcp_listener, addr_ref.as_ref(), &handle).unwrap();
 
-                let (writer, reader) = tcp.framed(LineCodec).split();
-                let service = (|| Ok(TcpListenerService::new(i, sender_ref.clone(), settings_ref.clone()))).new_service()?;
+                let server = listener.incoming().for_each(|(tcp, _)| {
 
-                let responses = reader.and_then(move |req| service.call(req));
-                let server = writer.send_all(responses)
-                    .then(|_| Ok(()));
-                handle.spawn(server);
+                    let (writer, reader) = tcp.framed(LineCodec).split();
+                    let service = (|| Ok(TcpListenerService::new(i, sender_ref.clone(), settings_ref.clone()))).new_service()?;
 
-                Ok(())
-            });
-            l.run(server).unwrap();
-        }));
+                    let responses = reader.and_then(move |req| service.call(req));
+                    let server = writer.send_all(responses)
+                        .then(|_| Ok(()));
+                    handle.spawn(server);
+
+                    Ok(())
+                });
+                l.run(server).unwrap();
+            }));
+        }
+
+        info!("Listening at {} via TCP with {} threads...", addr, settings.threads);
+
+        threads
     }
-
-    info!("Listening at {} via TCP with {} threads...", addr, settings.threads);
-
-    threads
 }
 
 pub struct LineCodec;

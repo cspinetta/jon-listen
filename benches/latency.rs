@@ -18,6 +18,8 @@ extern crate jon_listen;
 extern crate net2;
 
 
+use jon_listen::App;
+
 use jon_listen::listener::udp_server;
 use jon_listen::writer::file_writer::FileWriterCommand;
 use jon_listen::settings::*;
@@ -59,7 +61,7 @@ fn app_latency(b: &mut Bencher) {
     info!("Settings: {:?}", settings);
 
     let server_join = thread::spawn(move || {
-        jon_listen::start_up(settings_ref);
+        App::start_up(settings_ref);
     });
 
     let server_addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();

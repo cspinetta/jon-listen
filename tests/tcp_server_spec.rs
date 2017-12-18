@@ -14,7 +14,7 @@ extern crate jon_listen;
 extern crate net2;
 
 
-use jon_listen::listener::tcp_server::start_tcp_server;
+use jon_listen::listener::tcp_server::TcpServer;
 use jon_listen::writer::file_writer::FileWriterCommand;
 use jon_listen::settings::*;
 
@@ -50,7 +50,7 @@ fn it_receives_multiple_messages() {
 
     let server_addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
     let (file_writer_tx, file_writer_rx) = sync_channel(settings.buffer_bound);
-    let threads = start_tcp_server(settings.clone(), file_writer_tx.clone());
+    let threads = TcpServer::start(settings.clone(), file_writer_tx.clone());
 
     // To force server to get ready
     thread::sleep_ms(1);

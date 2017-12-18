@@ -65,7 +65,7 @@ fn it_receives_multiple_messages() {
         let socket = tokio_core::net::UdpSocket::bind(&server_addr, &handle).unwrap();
         server_addr_tx.complete(socket.local_addr().unwrap());
 
-        let server = udp_server::UdpServer::new(socket, file_writer_tx, 1, settings_ref);
+        let server = udp_server::UdpService::new(socket, file_writer_tx, 1, settings_ref);
         let server = server.select(stop_p.map_err(|_| panic!()));
         let server = server.map_err(|_| ());
 
