@@ -6,7 +6,6 @@ extern crate pretty_env_logger;
 extern crate matches;
 
 extern crate tokio_core;
-#[macro_use]
 extern crate tokio_io;
 
 extern crate futures;
@@ -15,31 +14,23 @@ extern crate jon_listen;
 extern crate net2;
 
 
-use jon_listen::listener::udp_server;
 use jon_listen::writer::file_writer::FileWriterCommand;
 use jon_listen::writer::file_rotation::*;
 use jon_listen::writer::rotation_policy::*;
 use jon_listen::settings::*;
 
-use tokio_core::net::UdpSocket;
-use tokio_core::reactor::Core;
-use net2::unix::UnixUdpBuilderExt;
 use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use std::path::PathBuf;
 
-use std::net::SocketAddr;
-use std::thread::{self, JoinHandle};
-use std::sync::Arc;
+use std::thread::JoinHandle;
 
-use futures::sync::oneshot;
-use futures::{Future, Poll};
-use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
+use std::sync::mpsc::sync_channel;
 
 
 fn settings_template() -> Settings {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards");
     let filename = format!("writer_test_{}.log", now.subsec_nanos());
-    let server = ServerConfig { host: "0.0.0.0".to_string(), port: 0 };
+    let server = ServerConfig { protocol: ProtocolType::UDP, host: "0.0.0.0".to_string(), port: 0 };
     let rotation_policy_config = RotationPolicyConfig { count: 10, policy: RotationPolicyType::ByDuration, duration: Option::Some(1) };
     let formatting_config = FormattingConfig { startingmsg: false, endingmsg: false };
     let file_config = FileWriterConfig { filedir: PathBuf::from(r"/tmp/"), filename, rotation: rotation_policy_config, formatting: formatting_config };

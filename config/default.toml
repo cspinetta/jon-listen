@@ -4,6 +4,7 @@ threads = 10
 buffer_bound = 50
 
 [server]
+protocol = "UDP"  # "UDP" | "TCP"
 host = "0.0.0.0"
 port = 8080
 
@@ -11,11 +12,10 @@ port = 8080
 filedir = "./"
 filename = "log"
 
-
   [filewriter.rotation]
-  policy = "ByDay"
+  policy = "ByDay"  # "ByDay" | "ByDuration"
   count = 10
-  duration = 10  # in seconds. It's not necessary if policy is different of ByDuration
+  duration = 10     # in seconds. Only required for ByDuration policy
 
   [filewriter.formatting]
   startingmsg = true

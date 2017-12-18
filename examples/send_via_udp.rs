@@ -18,6 +18,8 @@ extern crate jon_listen;
 extern crate net2;
 
 
+use jon_listen::App;
+
 use jon_listen::listener::udp_server;
 use jon_listen::writer::file_writer::FileWriterCommand;
 use jon_listen::settings::*;
@@ -42,15 +44,14 @@ use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
 fn settings_template() -> Settings {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards");
     let filename = format!("writer_test_{}.log", now.subsec_nanos());
-    let server = ServerConfig { host: "0.0.0.0".to_string(), port: 9999 };
+    let server = ServerConfig { protocol: ProtocolType::UDP, host: "0.0.0.0".to_string(), port: 9999 };
     let rotation_policy_config = RotationPolicyConfig { count: 10, policy: RotationPolicyType::ByDuration, duration: Option::Some(9999) };
     let formatting_config = FormattingConfig { startingmsg: false, endingmsg: false };
     let file_config = FileWriterConfig { filedir: PathBuf::from(r"/tmp/"), filename, rotation: rotation_policy_config, formatting: formatting_config };
-    Settings { debug: false, threads: 1, buffer_bound: 20, server, filewriter: file_config }
+    Settings { debug: false, threads: 5, buffer_bound: 20, server, filewriter: file_config }
 }
 
-#[bench]
-fn app_latency(b: &mut Bencher) {
+fn main() {
     pretty_env_logger::init().unwrap();
 
     let settings = Arc::new(settings_template());
@@ -59,16 +60,19 @@ fn app_latency(b: &mut Bencher) {
     info!("Settings: {:?}", settings);
 
     let server_join = thread::spawn(move || {
-        jon_listen::start_up(settings_ref);
+        App::start_up(settings_ref);
     });
 
     let server_addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
     let any_addr = "127.0.0.1:0".to_string().parse::<SocketAddr>().unwrap();
     let client = std::net::UdpSocket::bind(&any_addr).unwrap();
 
-    b.iter(|| {
-        let msg = "ckdlsncldnclnclcs".to_string();
+    thread::sleep(Duration::from_millis(1));
+
+    for i in 1..10000 {
+        trace!("Sending message {}", i);
+        let msg = format!("Message # {}", i);
         client.send_to(msg.as_ref(), &server_addr).unwrap();
-    });
+    };
 
 }

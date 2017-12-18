@@ -13,8 +13,28 @@ pub trait DeserializeWith: Sized {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
+    #[serde(deserialize_with="ProtocolType::deserialize_with")]
+    pub protocol: ProtocolType,
     pub host: String,
     pub port: i32,
+}
+
+#[derive(Debug, Deserialize, Eq, PartialEq, Clone)]
+pub enum ProtocolType {
+    TCP,
+    UDP
+}
+
+impl DeserializeWith for ProtocolType {
+    fn deserialize_with<'de, D>(de: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        let s = String::deserialize(de)?;
+
+        match s.as_ref() {
+            "TCP" => Ok(ProtocolType::TCP),
+            "UDP" => Ok(ProtocolType::UDP),
+            _ => Err(serde::de::Error::custom("error trying to deserialize protocol config"))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq, Clone)]
