@@ -66,20 +66,24 @@ use std::io;
 use std::str;
 use std::borrow::Borrow;
 
+pub struct App;
 
-pub fn start_up(settings: Arc<Settings>) {
+impl App {
 
-    let mut file_writer = FileWriter::new(settings.buffer_bound, settings.filewriter.clone());
+    pub fn start_up(settings: Arc<Settings>) {
 
-    let conn_threads = if settings.server.protocol == ProtocolType::TCP {
-        start_tcp_server(settings.clone(), file_writer.tx.clone())
-    } else {
-        start_udp_server(settings.clone(), file_writer.tx.clone())
-    };
+        let mut file_writer = FileWriter::new(settings.buffer_bound, settings.filewriter.clone());
 
-    file_writer.start();
-    for t in conn_threads {
-        t.join().unwrap();
+        let conn_threads = if settings.server.protocol == ProtocolType::TCP {
+            start_tcp_server(settings.clone(), file_writer.tx.clone())
+        } else {
+            start_udp_server(settings.clone(), file_writer.tx.clone())
+        };
+
+        file_writer.start();
+        for t in conn_threads {
+            t.join().unwrap();
+        }
+
     }
-
 }
