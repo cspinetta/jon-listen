@@ -10,8 +10,6 @@ Written in [Rust] language.
 
 > *[Jon Postel] in 1994, with map of Internet top-level domains.*
 
----
-
 ## Dependencies
 
 - Rust nightly:
