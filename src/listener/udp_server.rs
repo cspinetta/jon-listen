@@ -58,25 +58,23 @@ pub struct UdpService {
     pub name: String,
     pub socket: UdpSocket,
     pub buf: Vec<u8>,
-    pub to_send: Option<(usize, SocketAddr)>,
-    pub tx_file_writer: SyncSender<FileWriterCommand>,
+    pub writer_sender: SyncSender<FileWriterCommand>,
     settings: Arc<Settings>,
     count: i32
 }
 
 impl UdpService {
 
-    pub fn new(s: UdpSocket, tx_file_writer: SyncSender<FileWriterCommand>, id: i32, settings: Arc<Settings>) -> Self {
+    pub fn new(s: UdpSocket, writer_sender: SyncSender<FileWriterCommand>, id: i32, settings: Arc<Settings>) -> Self {
 
         UdpService {
             id,
             name: format!("server-udp-{}", id),
             socket: s,
-            to_send: None,
             buf: vec![0u8; 15000],
-            tx_file_writer,
+            writer_sender,
             settings,
-            count: 0
+            count: 0 // For debug only
         }
     }
 
@@ -89,13 +87,13 @@ impl Future for UdpService {
     fn poll(&mut self) -> Poll<(), io::Error> {
         loop {
             let (size, _): (usize, SocketAddr) = try_nb!(self.socket.recv_from(&mut self.buf));
-            self.count += 1;
             if self.settings.debug {
-                info!("Poll datagram from server {}. Count: {}", self.id, self.count);
-                self.tx_file_writer.send(FileWriterCommand::WriteDebug(self.name.clone(), self.buf[..size].to_vec(), self.count));
+                self.count += 1;
+                info!("Poll datagram from server {}. Count: {}", self.name, self.count);
+                self.writer_sender.send(FileWriterCommand::WriteDebug(self.name.clone(), self.buf[..size].to_vec(), self.count));
             } else {
-                debug!("Poll datagram from server {}. Count: {}", self.id, self.count);
-                self.tx_file_writer.send(FileWriterCommand::Write(self.buf[..size].to_vec()));
+                debug!("Poll datagram from server {}.", self.name);
+                self.writer_sender.send(FileWriterCommand::Write(self.buf[..size].to_vec()));
             }
         }
     }
