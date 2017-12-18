@@ -80,17 +80,6 @@ pub fn start_tcp_server(settings: Arc<Settings>, sender: SyncSender<FileWriterCo
 
 pub struct LineCodec;
 
-//impl Encoder for LineCodec {
-//    type Item = String;
-//    type Error = io::Error;
-//
-//    fn encode(&mut self, msg: String, buf: &mut BytesMut) -> io::Result<()> {
-//        buf.extend(msg.as_bytes());
-//        buf.extend(b"\n");
-//        Ok(())
-//    }
-//}
-
 impl Encoder for LineCodec {
     type Item = ();
     type Error = io::Error;
@@ -106,8 +95,7 @@ impl Decoder for LineCodec {
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<String>> {
         if let Some(i) = buf.iter().position(|&b| b == b'\n') {
-            let line = buf.split_to(i); // remove the serialized frame from the buffer.
-            buf.split_to(1); // Also remove the '\n'
+            let line = buf.split_to(i + 1);
 
             // Turn this data into a UTF string and return it in a Frame.
             match str::from_utf8(&line) {
