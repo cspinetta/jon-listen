@@ -2,11 +2,15 @@ Jon Listen
 =================================
 [![Build Status](https://travis-ci.org/cspinetta/jon-listen.svg?branch=master)](https://travis-ci.org/cspinetta/jon-listen)
 
-Simple and multithreading TCP/UDP listener to forward data to a log file. Also it provide some functionality of a logger such as file rotation, control the number of rotated files, etc.
+Simple and multithreading TCP/UDP logger. It writes data to a plain text file and it also provides additional functionalities such as log file rotation, control the number of rotated files, etc.
 
 Written in [Rust] language.
 
 ![alt text](https://upload.wikimedia.org/wikipedia/commons/4/44/Jon_Postel.jpg)
+
+> *[Jon Postel] in 1994, with map of Internet top-level domains.*
+
+---
 
 ## Dependencies
 
@@ -66,3 +70,4 @@ Apache-2.0
 
 [Rust]:https://www.rust-lang.org/en-US/index.html
 [TOML]:https://github.com/toml-lang/toml
+[Jon Postel]:https://en.wikipedia.org/wiki/Jon_Postel
