@@ -1,17 +1,26 @@
+
+#[macro_use]
+extern crate log;
+extern crate pretty_env_logger;
+
 extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;
+extern crate tokio_timer;
 extern crate bytes;
 
 use std::env;
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::thread;
+use std::time::Duration;
+use tokio_timer::*;
 
 use tokio_core::reactor::Core;
 
 use futures::sync::mpsc;
 use futures::{Sink, Future, Stream};
+use futures::IntoFuture;
 
 fn main() {
 
@@ -24,21 +33,34 @@ fn main() {
         None => true,
     };
 
-    // Parse what address we're going to connect to
     let addr = args.first().unwrap_or_else(|| {
         panic!("This program requires at least one argument")
     });
     let addr = addr.parse::<SocketAddr>().unwrap();
+    const TICK_DURATION: u64 = 10;
+    const TIMER_INTERVAL: u64 = 100;
+
 
     let mut core = Core::new().expect("Core");
 
-    let sender = tcp::connect(&addr, core.handle());
+    let (stdin_tx, stdin_rx) = mpsc::channel(0);
+    let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
+
+    let sender = tcp::connect(&addr, core.handle(), Box::new(stdin_rx));
+
+    let timer = tokio_timer::wheel().tick_duration(Duration::from_millis(TICK_DURATION)).build();
+    let timer = timer.interval(Duration::from_millis(TIMER_INTERVAL)).for_each(move |_| {
+        println!("writting...........");
+        stdin_tx.clone().send("hello world!!\n".as_bytes().to_vec()).wait().unwrap();
+        Ok(())
+    });
+    core.handle().spawn(timer.map_err(|_| ()));
 
     core.run(sender).unwrap();
 }
 
 mod tcp {
-    use std::io;
+    use std::io::{self, Read, Write};
     use std::net::SocketAddr;
 
     use bytes::{BufMut, BytesMut};
@@ -51,27 +73,35 @@ mod tcp {
     use tokio_io::AsyncRead;
     use tokio_io::codec::{Encoder, Decoder};
     use futures::IntoFuture;
-    use std::io::Write;
     use futures::Sink;
     use futures::stream::*;
     use futures::sink::SendAll;
 
-    pub fn connect(addr: &SocketAddr, handle: Handle) -> Box<Future<Item = (), Error = io::Error>>
-    {
-        let tcp = TcpStream::connect(addr, &handle);
+    use std;
+    use std::time::Duration;
+    use tokio_timer;
+    use tokio_timer::*;
 
-        let msg_generator =
-            stream::repeat("hello world!!\n".as_bytes().to_vec())
-                .map_err(|_: ()| io::Error::new(io::ErrorKind::Other, format!("Error generating messages")))
-                .take(100);
+    pub fn connect(addr: &SocketAddr, handle: Handle,
+            stdin: Box<Stream<Item = Vec<u8>, Error = io::Error> + Send>) -> Box<Future<Item=(), Error=io::Error>> {
 
-        Box::new(tcp.and_then(move |mut stream| {
-            let (sink, stream2) = stream.framed(Bytes).split();
+        let tcp = TcpStream::connect(&addr, &handle);
 
-            sink
-                .send_all(msg_generator)
-                .map(|(_,_) | ())
-        }))
+        let mut stdout = io::stdout();
+        let client = tcp.and_then(|stream| {
+            let (sink, stream) = stream.framed(Bytes).split();
+            let send_stdin = stdin.forward(sink);
+            let write_stdout = stream.for_each(move |buf| {
+//                stdout.write_all(buf.as_ref())
+                println!("Receiving: {:?}", buf.as_ref());
+                Ok(())
+            });
+            send_stdin.map(|_| ())
+//                .select(write_stdout.map(|_| ()))
+                .then(|_| Ok(()))
+        });
+
+        Box::new(client)
     }
 
     struct Bytes;
@@ -99,7 +129,10 @@ mod tcp {
         type Error = io::Error;
 
         fn encode(&mut self, data: Vec<u8>, buf: &mut BytesMut) -> io::Result<()> {
-            buf.put(&data[..]);
+            let size = buf.capacity();
+            let size2 = buf.remaining_mut();
+            println!("capacity: {}, {}, data: {}", size, size2, data.len());
+            buf.extend(data);
             Ok(())
         }
     }

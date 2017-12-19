@@ -27,4 +27,5 @@ serde = "1.0"
 toml = "0.4"
 
 [dev-dependencies]
+tokio-timer = "0.1"
 matches = "0.1"
