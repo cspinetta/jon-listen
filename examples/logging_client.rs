@@ -11,6 +11,7 @@ extern crate tokio_timer;
 extern crate bytes;
 
 use std::env;
+use std::vec::Vec;
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::thread;
@@ -19,7 +20,11 @@ use tokio_timer::*;
 
 use tokio_core::reactor::{self, Core};
 
+use futures::AndThen;
 use futures::sync::mpsc;
+use futures::sync::mpsc::{SendError, Sender};
+use futures::stream::{self, Repeat};
+use futures::sink::SendAll;
 use futures::{Sink, Future, Stream};
 use futures::IntoFuture;
 
@@ -52,13 +57,18 @@ fn main() {
 
     let sender: Box<Future<Item=(), Error=io::Error>> = tcp::connect(&addr, core.handle(), Box::new(msg_receiver));
 
-    let timer = tokio_timer::wheel().tick_duration(Duration::from_micros(TICK_DURATION)).build();
-    let timer = timer.interval(Duration::from_micros(TIMER_INTERVAL)).for_each(move |_| {
-        let msg = "hello world!!\n";
-        println!("Sending: {}", msg);
-        msg_sender.clone().send(msg.as_bytes().to_vec()).wait().unwrap();
-        Ok(())
-    });
+    let stream = stream::repeat("hello world!!\n".as_bytes().to_vec());
+    let generator: SendAll<Sender<Vec<u8>>, Repeat<Vec<u8>, SendError<Vec<u8>>>> = msg_sender.clone().send_all(stream);
+    let generator = generator
+        .then(move |res| {
+            if let Err(e) = res {
+                panic!("Occur an error generating messages: {:?}", e);
+            }
+            Ok(())
+        });
+
+//    send_all<S>(self, stream: S) -> SendAll<Self, S> where     S: Stream<Item = Self::SinkItem>,     Self::SinkError: From<S::Error>,     Self: Sized,
+
 
 
     let timeout: Box<Future<Item=(), Error=io::Error>> = Box::new(reactor::Timeout::new(MAX_TIME, &handle)
@@ -70,7 +80,7 @@ fn main() {
         .map_err(|e| panic!("Fail!!!"))
         .map(|_| ());
 
-    core.handle().spawn(timer.map_err(|_| ()));
+    core.handle().spawn(generator);
 
     core.run(f).unwrap();
 }
@@ -221,3 +231,13 @@ mod tcp {
 //        }
 //    }
 //}
+
+
+
+//    let timer = tokio_timer::wheel().tick_duration(Duration::from_micros(TICK_DURATION)).build();
+//    let timer = timer.interval(Duration::from_micros(TIMER_INTERVAL)).for_each(move |_| {
+//        let msg = "hello world!!\n";
+//        println!("Sending: {}", msg);
+//        msg_sender.clone().send(msg.as_bytes().to_vec()).wait().unwrap();
+//        Ok(())
+//    });
