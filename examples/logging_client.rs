@@ -1,6 +1,4 @@
-#![feature(duration_from_micros)]
 
-#[macro_use]
 extern crate log;
 extern crate pretty_env_logger;
 
@@ -12,19 +10,14 @@ extern crate bytes;
 
 use std::env;
 use std::vec::Vec;
-use std::io::{self, Read, Write};
+use std::io;
 use std::net::SocketAddr;
-use std::thread;
 use std::time::Duration;
-use tokio_timer::*;
 
 use tokio_core::reactor::{self, Core};
 
-use futures::AndThen;
 use futures::sync::mpsc;
-use futures::sync::mpsc::{SendError, Sender};
-use futures::stream::{self, Repeat};
-use futures::sink::SendAll;
+use futures::stream;
 use futures::{Sink, Future, Stream};
 use futures::IntoFuture;
 
@@ -37,17 +30,11 @@ fn main() {
     let exec_duration = extract_arg(args.as_mut(), vec!["--duration".to_string(), "-d".to_string()], Option::Some(Duration::from_secs(10)),
                                     |x| { Duration::from_secs(x.parse::<u64>().unwrap()) });
 
-
-    const TICK_DURATION: u64 = 100;
-    const TIMER_INTERVAL: u64 = 200;
-
     let mut core = Core::new().expect("Creating event loop");
     let handle = core.handle();
 
     let (mut msg_sender, msg_receiver) = mpsc::channel(0);
-    let msg_receiver = msg_receiver.map_err(|_| panic!()); // errors not possible on rx
-
-    let sender: Box<Future<Item=(), Error=io::Error>> = tcp::connect(&addr, core.handle(), Box::new(msg_receiver));
+    let msg_receiver = msg_receiver.map_err(|_| panic!("Error in rx")); // errors not possible on rx
 
     let stream = stream::repeat("hello world!!\n".as_bytes().to_vec());
     let generator = msg_sender.clone().send_all(stream);
@@ -59,16 +46,18 @@ fn main() {
             Ok(())
         });
 
-    let timeout: Box<Future<Item=(), Error=io::Error>> = Box::new(reactor::Timeout::new(exec_duration, &handle)
+    core.handle().spawn(generator);
+
+    let sender: Box<Future<Item=(), Error=io::Error>> = tcp::connect(&addr, core.handle(), Box::new(msg_receiver));
+    let timeout = reactor::Timeout::new(exec_duration, &handle)
         .into_future()
         .and_then(move |timeout| timeout.and_then(move |_| Ok(())))
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, format!("Error in timeout"))));
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Error performing timeout: {:?}", e)));
 
     let f = timeout.select(sender)
-        .map_err(|e| panic!("Fail!!!"))
+        .map_err(|_| panic!("Fail!!!"))
         .map(|_| ());
 
-    core.handle().spawn(generator);
     core.run(f).unwrap();
 }
 
@@ -85,27 +74,16 @@ fn extract_arg<T>(args: &mut Vec<String>, names: Vec<String>, default: Option<T>
 }
 
 mod tcp {
-    use std::io::{self, Read, Write};
+    use std::io;
     use std::net::SocketAddr;
 
     use bytes::{BufMut, BytesMut};
     use futures::{Future, Stream};
-    use futures::stream::{self, MapErr};
     use tokio_core::net::TcpStream;
     use tokio_core::reactor::Handle;
-    use tokio_io;
-    use tokio_io::codec::Framed;
     use tokio_io::AsyncRead;
     use tokio_io::codec::{Encoder, Decoder};
-    use futures::IntoFuture;
-    use futures::Sink;
-    use futures::stream::*;
-    use futures::sink::SendAll;
 
-    use std;
-    use std::time::Duration;
-    use tokio_timer;
-    use tokio_timer::*;
 
     pub fn connect(addr: &SocketAddr, handle: Handle,
             input_stream: Box<Stream<Item = Vec<u8>, Error = io::Error> + Send>) -> Box<Future<Item=(), Error=io::Error>> {
@@ -230,6 +208,8 @@ mod tcp {
 //}
 
 
+//    const TICK_DURATION: u64 = 100;
+//    const TIMER_INTERVAL: u64 = 200;
 
 //    let timer = tokio_timer::wheel().tick_duration(Duration::from_micros(TICK_DURATION)).build();
 //    let timer = timer.interval(Duration::from_micros(TIMER_INTERVAL)).for_each(move |_| {
