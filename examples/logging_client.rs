@@ -16,7 +16,7 @@ use std::thread;
 use std::time::Duration;
 use tokio_timer::*;
 
-use tokio_core::reactor::Core;
+use tokio_core::reactor::{self, Core};
 
 use futures::sync::mpsc;
 use futures::{Sink, Future, Stream};
@@ -40,23 +40,38 @@ fn main() {
     const TICK_DURATION: u64 = 10;
     const TIMER_INTERVAL: u64 = 100;
 
+    let MAX_TIME: Duration = Duration::from_secs(10);
+
 
     let mut core = Core::new().expect("Core");
+    let handle = core.handle();
 
-    let (stdin_tx, stdin_rx) = mpsc::channel(0);
-    let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
+    let (mut msg_sender, msg_receiver) = mpsc::channel(0);
+    let msg_receiver = msg_receiver.map_err(|_| panic!()); // errors not possible on rx
 
-    let sender = tcp::connect(&addr, core.handle(), Box::new(stdin_rx));
+    let sender: Box<Future<Item=(), Error=io::Error>> = tcp::connect(&addr, core.handle(), Box::new(msg_receiver));
 
     let timer = tokio_timer::wheel().tick_duration(Duration::from_millis(TICK_DURATION)).build();
     let timer = timer.interval(Duration::from_millis(TIMER_INTERVAL)).for_each(move |_| {
-        println!("writting...........");
-        stdin_tx.clone().send("hello world!!\n".as_bytes().to_vec()).wait().unwrap();
+        let msg = "hello world!!\n";
+        println!("Sending: {}", msg);
+        msg_sender.clone().send(msg.as_bytes().to_vec()).wait().unwrap();
         Ok(())
     });
+
+
+    let timeout: Box<Future<Item=(), Error=io::Error>> = Box::new(reactor::Timeout::new(MAX_TIME, &handle)
+        .into_future()
+        .and_then(move |timeout| timeout.and_then(move |_| Ok(())))
+        .map_err(|_| io::Error::new(io::ErrorKind::Other, format!("Error in timeout"))));
+
+    let f = timeout.select(sender)
+        .map_err(|e| panic!("Fail!!!"))
+        .map(|_| ());
+
     core.handle().spawn(timer.map_err(|_| ()));
 
-    core.run(sender).unwrap();
+    core.run(f).unwrap();
 }
 
 mod tcp {
@@ -83,14 +98,14 @@ mod tcp {
     use tokio_timer::*;
 
     pub fn connect(addr: &SocketAddr, handle: Handle,
-            stdin: Box<Stream<Item = Vec<u8>, Error = io::Error> + Send>) -> Box<Future<Item=(), Error=io::Error>> {
+            input_stream: Box<Stream<Item = Vec<u8>, Error = io::Error> + Send>) -> Box<Future<Item=(), Error=io::Error>> {
 
         let tcp = TcpStream::connect(&addr, &handle);
 
         let mut stdout = io::stdout();
         let client = tcp.and_then(|stream| {
             let (sink, stream) = stream.framed(Bytes).split();
-            let send_stdin = stdin.forward(sink);
+            let send_stdin = input_stream.forward(sink);
             let write_stdout = stream.for_each(move |buf| {
 //                stdout.write_all(buf.as_ref())
                 println!("Receiving: {:?}", buf.as_ref());
@@ -131,7 +146,6 @@ mod tcp {
         fn encode(&mut self, data: Vec<u8>, buf: &mut BytesMut) -> io::Result<()> {
             let size = buf.capacity();
             let size2 = buf.remaining_mut();
-            println!("capacity: {}, {}, data: {}", size, size2, data.len());
             buf.extend(data);
             Ok(())
         }
