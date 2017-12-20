@@ -31,25 +31,17 @@ use futures::IntoFuture;
 fn main() {
 
     let mut args = env::args().skip(1).collect::<Vec<_>>();
-    let tcp = match args.iter().position(|a| a == "--udp") {
-        Some(i) => {
-            args.remove(i);
-            false
-        }
-        None => true,
-    };
+    let tcp = extract_arg(args.as_mut(), vec!["--udp".to_string()], Option::Some(true), |x| x.parse::<bool>().unwrap());
+    let threads = extract_arg(args.as_mut(), vec!["--threads".to_string(), "-t".to_string()], Option::Some(10), |x| x.parse::<usize>().unwrap());
+    let addr = extract_arg(args.as_mut(), vec!["--address".to_string(), "-a".to_string()], Option::None, |x| x.parse::<SocketAddr>().unwrap());
+    let exec_duration = extract_arg(args.as_mut(), vec!["--duration".to_string(), "-d".to_string()], Option::Some(Duration::from_secs(10)),
+                                    |x| { Duration::from_secs(x.parse::<u64>().unwrap()) });
 
-    let addr = args.first().unwrap_or_else(|| {
-        panic!("This program requires at least one argument")
-    });
-    let addr = addr.parse::<SocketAddr>().unwrap();
+
     const TICK_DURATION: u64 = 100;
     const TIMER_INTERVAL: u64 = 200;
 
-    let MAX_TIME: Duration = Duration::from_secs(10);
-
-
-    let mut core = Core::new().expect("Core");
+    let mut core = Core::new().expect("Creating event loop");
     let handle = core.handle();
 
     let (mut msg_sender, msg_receiver) = mpsc::channel(0);
@@ -58,7 +50,7 @@ fn main() {
     let sender: Box<Future<Item=(), Error=io::Error>> = tcp::connect(&addr, core.handle(), Box::new(msg_receiver));
 
     let stream = stream::repeat("hello world!!\n".as_bytes().to_vec());
-    let generator: SendAll<Sender<Vec<u8>>, Repeat<Vec<u8>, SendError<Vec<u8>>>> = msg_sender.clone().send_all(stream);
+    let generator = msg_sender.clone().send_all(stream);
     let generator = generator
         .then(move |res| {
             if let Err(e) = res {
@@ -67,11 +59,7 @@ fn main() {
             Ok(())
         });
 
-//    send_all<S>(self, stream: S) -> SendAll<Self, S> where     S: Stream<Item = Self::SinkItem>,     Self::SinkError: From<S::Error>,     Self: Sized,
-
-
-
-    let timeout: Box<Future<Item=(), Error=io::Error>> = Box::new(reactor::Timeout::new(MAX_TIME, &handle)
+    let timeout: Box<Future<Item=(), Error=io::Error>> = Box::new(reactor::Timeout::new(exec_duration, &handle)
         .into_future()
         .and_then(move |timeout| timeout.and_then(move |_| Ok(())))
         .map_err(|_| io::Error::new(io::ErrorKind::Other, format!("Error in timeout"))));
@@ -81,8 +69,19 @@ fn main() {
         .map(|_| ());
 
     core.handle().spawn(generator);
-
     core.run(f).unwrap();
+}
+
+fn extract_arg<T>(args: &mut Vec<String>, names: Vec<String>, default: Option<T>, parser: fn(&String) -> T) -> T {
+    match args.iter().position(|a| names.contains(a)) {
+        Some(i) => {
+            let value: T = parser(args.get(i + 1).unwrap());
+            args.remove(i + 1);
+            args.remove(i);
+            value
+        }
+        None => default.expect(format!("This parameter is required: {:?}", names).as_ref()),
+    }
 }
 
 mod tcp {
@@ -121,9 +120,7 @@ mod tcp {
                 println!("Receiving: {:?}", buf.as_ref());
                 Ok(())
             });
-            send_stdin
-                .map(|_| ())
-                .then(|_| Ok(()))
+            send_stdin.then(|_| Ok(()))
         });
 
         Box::new(client)
