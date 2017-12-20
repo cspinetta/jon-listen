@@ -37,8 +37,8 @@ fn main() {
         panic!("This program requires at least one argument")
     });
     let addr = addr.parse::<SocketAddr>().unwrap();
-    const TICK_DURATION: u64 = 10;
-    const TIMER_INTERVAL: u64 = 100;
+    const TICK_DURATION: u64 = 1;
+    const TIMER_INTERVAL: u64 = 2;
 
     let MAX_TIME: Duration = Duration::from_secs(10);
 
