@@ -1,3 +1,4 @@
+#![feature(duration_from_micros)]
 
 #[macro_use]
 extern crate log;
@@ -37,8 +38,8 @@ fn main() {
         panic!("This program requires at least one argument")
     });
     let addr = addr.parse::<SocketAddr>().unwrap();
-    const TICK_DURATION: u64 = 1;
-    const TIMER_INTERVAL: u64 = 2;
+    const TICK_DURATION: u64 = 100;
+    const TIMER_INTERVAL: u64 = 200;
 
     let MAX_TIME: Duration = Duration::from_secs(10);
 
@@ -51,8 +52,8 @@ fn main() {
 
     let sender: Box<Future<Item=(), Error=io::Error>> = tcp::connect(&addr, core.handle(), Box::new(msg_receiver));
 
-    let timer = tokio_timer::wheel().tick_duration(Duration::from_millis(TICK_DURATION)).build();
-    let timer = timer.interval(Duration::from_millis(TIMER_INTERVAL)).for_each(move |_| {
+    let timer = tokio_timer::wheel().tick_duration(Duration::from_micros(TICK_DURATION)).build();
+    let timer = timer.interval(Duration::from_micros(TIMER_INTERVAL)).for_each(move |_| {
         let msg = "hello world!!\n";
         println!("Sending: {}", msg);
         msg_sender.clone().send(msg.as_bytes().to_vec()).wait().unwrap();
@@ -107,12 +108,11 @@ mod tcp {
             let (sink, stream) = stream.framed(Bytes).split();
             let send_stdin = input_stream.forward(sink);
             let write_stdout = stream.for_each(move |buf| {
-//                stdout.write_all(buf.as_ref())
                 println!("Receiving: {:?}", buf.as_ref());
                 Ok(())
             });
-            send_stdin.map(|_| ())
-//                .select(write_stdout.map(|_| ()))
+            send_stdin
+                .map(|_| ())
                 .then(|_| Ok(()))
         });
 
