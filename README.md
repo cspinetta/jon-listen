@@ -62,6 +62,20 @@ Execute from the terminal:
 cargo test
 ```
 
+### Testing through logging_client
+
+Having a log server listening at `0.0.0.0:8080` via UDP. To send it log for 10 seconds, just execute from the terminal:
+
+```bash
+RUST_LOG=info cargo run --example logging_client -- --address '127.0.0.1:8080' --duration 10
+```
+
+If the server is listening via TCP:
+
+```bash
+RUST_LOG=info cargo run --example logging_client -- --address '127.0.0.1:8080' --duration 10 --tcp
+```
+
 ## License
 
 Apache-2.0
