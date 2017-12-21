@@ -23,9 +23,10 @@ use futures::{Sink, Future, Stream, future};
 use futures::IntoFuture;
 
 fn main() {
+    pretty_env_logger::init().unwrap();
 
     let mut args = env::args().skip(1).collect::<Vec<_>>();
-    let udp = extract_command_arg(args.as_mut(), vec!["--udp".to_string()]);
+    let tcp = extract_command_arg(args.as_mut(), vec!["--tcp".to_string()]);
     let threads = extract_arg(args.as_mut(), vec!["--threads".to_string(), "-t".to_string()], Option::Some(10), |x| x.parse::<usize>().unwrap());
     let addr = extract_arg(args.as_mut(), vec!["--address".to_string(), "-a".to_string()], Option::None, |x| x.parse::<SocketAddr>().unwrap());
     let exec_duration = extract_arg(args.as_mut(), vec!["--duration".to_string(), "-d".to_string()], Option::Some(Duration::from_secs(10)),
@@ -42,7 +43,7 @@ fn main() {
     let generator = generator
         .then(move |res| {
             if let Err(e) = res {
-                println!("Occur an error generating messages: {:?}", e);
+                panic!("Occur an error generating messages: {:?}", e);
                 ()
             }
             Ok(())
@@ -50,15 +51,15 @@ fn main() {
 
     core.handle().spawn(generator);
 
-    let sender: Box<Future<Item=(), Error=io::Error>> = if udp {
-        println!("Starting UDP client");
-        udp::connect(&addr, core.handle(), Box::new(msg_receiver))
-    } else {
-        println!("Starting TCP client");
+    let sender: Box<Future<Item=(), Error=io::Error>> = if tcp {
+        info!("Starting TCP client");
         tcp::connect(&addr, core.handle(), Box::new(msg_receiver))
+    } else {
+        info!("Starting UDP client");
+        udp::connect(&addr, core.handle(), Box::new(msg_receiver))
     };
 
-    let timeout = reactor::Timeout::new(exec_duration, &handle)
+    let timeout_emitter = reactor::Timeout::new(exec_duration, &handle)
         .into_future()
         .and_then(|timeout| timeout.and_then(move |_| {
             Ok(())
@@ -67,7 +68,7 @@ fn main() {
             io::Error::new(io::ErrorKind::Other, format!("Error performing timeout: {:?}", e))
         });
 
-    let f = timeout
+    let f = timeout_emitter
         .select(sender)
         .then(|res| -> Box<Future<Item=_, Error=_>> {
                match res {
@@ -75,10 +76,6 @@ fn main() {
                    Err((error, _)) => Box::new(future::err(error)),
                }
            });
-
-//    let f = timeout.select(sender)
-//        .map_err(|(a, _)| panic!("Fail!!!, {:?}", a))
-//        .map(|_| ());
 
     core.run(f).expect("Event loop running");
 }
@@ -110,11 +107,12 @@ mod tcp {
     use std::net::SocketAddr;
 
     use bytes::BytesMut;
-    use futures::{Future, Stream};
+    use futures::{future, Future, Stream};
     use tokio_core::net::TcpStream;
     use tokio_core::reactor::Handle;
     use tokio_io::AsyncRead;
     use tokio_io::codec::{Encoder, Decoder};
+    use futures::IntoFuture;
 
 
     pub fn connect(addr: &SocketAddr, handle: Handle,
@@ -123,13 +121,28 @@ mod tcp {
         let tcp = TcpStream::connect(&addr, &handle);
 
         let client = tcp.and_then(|stream| {
-            let (sink, _stream) = stream.framed(Bytes).split();
-            let send_stdin = input_stream.forward(sink);
-//            let write_stdout = stream.for_each(move |buf| {
-//                println!("Receiving: {:?}", buf.as_ref());
-//                Ok(())
-//            });
-            send_stdin.then(|_| Ok(()))
+            let (sink, stream) = stream.framed(Bytes).split();
+            let receive_stream = stream.for_each(move |buf| {
+                info!("Received via TCP connection: {:?}", buf.as_ref());
+                Ok(())
+            });
+            let log_emitter = input_stream
+                .forward(sink)
+                .into_future()
+                .then(|res| {
+                    match res {
+                        Err(e) => Err(io::Error::new(io::ErrorKind::Other, format!("Error sending log messages: {:?}", e))),
+                        Ok((_, _)) => Ok(())
+                    }
+                });
+            Box::new(log_emitter
+                .select(receive_stream))
+                .then(|res| -> Box<Future<Item=_, Error=_>> {
+                    match res {
+                        Ok((a, b)) => Box::new(b.map(move |b| ())),
+                        Err((a, _)) => Box::new(future::err(a)),
+                    }
+                })
         });
 
         Box::new(client)
