@@ -1,6 +1,5 @@
 
 #![feature(try_trait)]
-#![feature(custom_derive)]
 #![feature(custom_attribute)]
 
 #[macro_use]

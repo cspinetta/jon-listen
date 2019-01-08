@@ -12,12 +12,11 @@ Written in [Rust] language.
 
 ## Dependencies
 
-- Rust nightly:
+- Rust stable:
 
 ```bash
-rustup install nightly
-rustup default nightly
-
+rustup install stable
+rustup default stable
 ```
 
 ## Start server
