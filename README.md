@@ -10,9 +10,9 @@ Written in [Rust] language.
 
 > *[Jon Postel] in 1994, with map of Internet top-level domains.*
 
-## Dependencies
+## Requirements
 
-- Rust stable:
+- Rust stable (Edition 2021)
 
 ```bash
 rustup install stable
@@ -21,11 +21,13 @@ rustup default stable
 
 ## Start server
 
-Execute from the terminal:
+Run from the terminal:
 
 ```bash
 RUST_LOG=info cargo run
 ```
+
+- Press Ctrl+C to gracefully stop the server.
 
 ## Config file
 The config is written in [TOML].
@@ -36,8 +38,8 @@ Optionally you can add a config file by environment setting `RUN_MODE={developme
 
 You can provide environment variable to define log level and override configuration:
 
-* Log level: `RUST_LOG={debug|info|warn|error}`. Also it's possible to define the level for a specific module: `RUST_LOG=writer=debug` turns on debug logging for `writer` module.
-* Override config: define variable with a prefix of APP. Eg:
+* Log level: `RUST_LOG={debug|info|warn|error}`. You can set per-module levels: `RUST_LOG=writer=debug` enables debug for the `writer` module.
+* Override config: define variables with a prefix of `APP_`. Eg:
 
 `APP_filewriter_rotation_policy=ByDay` would set:
 
@@ -61,18 +63,19 @@ Execute from the terminal:
 cargo test
 ```
 
-### Testing through logging_client
+### Examples
 
-Having a log server listening at `0.0.0.0:8080` via UDP. To send it log for 10 seconds, just execute from the terminal:
+Simple UDP sender (sends N messages):
 
 ```bash
-RUST_LOG=info cargo run --example logging_client -- --address '127.0.0.1:8080' --duration 10
+cargo run --example send_via_udp -- 127.0.0.1:8080 1000
 ```
 
-If the server is listening via TCP:
+Minimal logging client (UDP or TCP) for a duration:
 
 ```bash
-RUST_LOG=info cargo run --example logging_client -- --address '127.0.0.1:8080' --duration 10 --tcp
+cargo run --example logging_client -- --address 127.0.0.1:8080 --duration 10
+cargo run --example logging_client -- --address 127.0.0.1:8080 --duration 10 --tcp
 ```
 
 ## License

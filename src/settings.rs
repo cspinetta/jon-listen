@@ -1,19 +1,20 @@
-use std::env;
-use config::{Config, File, Environment};
-use std::path::PathBuf;
+use config::{Config, Environment, File};
+use log::info;
 use serde;
 use serde::de::Deserializer;
 use serde::Deserialize;
-use config::Source;
+use std::env;
+use std::path::PathBuf;
 
 pub trait DeserializeWith: Sized {
     fn deserialize_with<'de, D>(de: D) -> Result<Self, D::Error>
-        where D: Deserializer<'de>;
+    where
+        D: Deserializer<'de>;
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
-    #[serde(deserialize_with="ProtocolType::deserialize_with")]
+    #[serde(deserialize_with = "ProtocolType::deserialize_with")]
     pub protocol: ProtocolType,
     pub host: String,
     pub port: i32,
@@ -22,17 +23,22 @@ pub struct ServerConfig {
 #[derive(Debug, Deserialize, Eq, PartialEq, Clone)]
 pub enum ProtocolType {
     TCP,
-    UDP
+    UDP,
 }
 
 impl DeserializeWith for ProtocolType {
-    fn deserialize_with<'de, D>(de: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+    fn deserialize_with<'de, D>(de: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
         let s = String::deserialize(de)?;
 
         match s.as_ref() {
             "TCP" => Ok(ProtocolType::TCP),
             "UDP" => Ok(ProtocolType::UDP),
-            _ => Err(serde::de::Error::custom("error trying to deserialize protocol config"))
+            _ => Err(serde::de::Error::custom(
+                "error trying to deserialize protocol config",
+            )),
         }
     }
 }
@@ -40,17 +46,22 @@ impl DeserializeWith for ProtocolType {
 #[derive(Debug, Deserialize, Eq, PartialEq, Clone)]
 pub enum RotationPolicyType {
     ByDuration,
-    ByDay
+    ByDay,
 }
 
 impl DeserializeWith for RotationPolicyType {
-    fn deserialize_with<'de, D>(de: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+    fn deserialize_with<'de, D>(de: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
         let s = String::deserialize(de)?;
 
         match s.as_ref() {
             "ByDuration" => Ok(RotationPolicyType::ByDuration),
             "ByDay" => Ok(RotationPolicyType::ByDay),
-            _ => Err(serde::de::Error::custom("error trying to deserialize rotation policy config"))
+            _ => Err(serde::de::Error::custom(
+                "error trying to deserialize rotation policy config",
+            )),
         }
     }
 }
@@ -58,7 +69,7 @@ impl DeserializeWith for RotationPolicyType {
 #[derive(Debug, Deserialize, Clone)]
 pub struct RotationPolicyConfig {
     pub count: i32,
-    #[serde(deserialize_with="RotationPolicyType::deserialize_with")]
+    #[serde(deserialize_with = "RotationPolicyType::deserialize_with")]
     pub policy: RotationPolicyType,
     pub duration: Option<u64>,
 }
@@ -87,34 +98,22 @@ pub struct Settings {
 }
 
 impl Settings {
-
     pub fn load() -> Self {
-        let mut s = Config::new();
+        let run_mode = env::var("RUN_MODE").unwrap_or("development".into());
 
-        // Start off by merging in the "default" configuration file
-        s.merge(File::with_name("config/default")).unwrap();
+        let builder = Config::builder()
+            .add_source(File::with_name("config/default"))
+            .add_source(File::with_name(&format!("config/{}", run_mode)).required(false))
+            .add_source(File::with_name("config/local").required(false))
+            .add_source(Environment::with_prefix("APP").separator("_"));
 
-        // Add in the current environment file
-        // Default to 'development' env
-        // Note that this file is _optional_
-        let env = env::var("RUN_MODE").unwrap_or("development".into());
-        s.merge(File::with_name(&format!("config/{}", env)).required(false)).unwrap();
+        let config = builder.build().expect("Failed to build configuration");
 
-        // Add in a local configuration file
-        // This file shouldn't be checked in to git
-        s.merge(File::with_name("config/local").required(false)).unwrap();
+        info!("Debug: {:?}", config.get_bool("debug"));
 
-        // Add in settings from the environment (with a prefix of APP)
-        // Eg.. `APP_DEBUG=1 ./target/app` would set the `debug` key
-        s.merge(Environment::with_prefix("app")).unwrap();
-
-        // Now that we're done, let's access our configuration
-        info!("Debug: {:?}", s.get_bool("debug"));
-        debug!("Provided settings:  {:?}", s.collect());
-//        info!("database: {:?}", s.get::<String>("database.url"));
-
-        // You can deserialize (and thus freeze) the entire configuration as
-        let settings = s.deserialize().unwrap();
+        let settings: Settings = config
+            .try_deserialize()
+            .expect("Failed to deserialize settings");
         info!("Settings: {:?}", settings);
         settings
     }

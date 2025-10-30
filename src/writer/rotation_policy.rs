@@ -1,7 +1,5 @@
-
-use std::time::Duration;
 use chrono::prelude::*;
-use time;
+use std::time::Duration;
 
 pub trait RotationPolicy: Sync + Send {
     fn next_rotation(&self, last_rotation: DateTime<Local>) -> DateTime<Local>;
@@ -9,20 +7,18 @@ pub trait RotationPolicy: Sync + Send {
 
 #[derive(Clone)]
 pub struct RotationByDuration {
-    duration: Duration
+    duration: Duration,
 }
 
 impl RotationByDuration {
-
     pub fn new(duration: Duration) -> Self {
         RotationByDuration { duration }
     }
 }
 
 impl RotationPolicy for RotationByDuration {
-
     fn next_rotation(&self, last_rotation: DateTime<Local>) -> DateTime<Local> {
-        last_rotation.clone() + time::Duration::from_std(self.duration).unwrap()
+        last_rotation + chrono::Duration::from_std(self.duration).unwrap()
     }
 }
 
@@ -30,15 +26,21 @@ impl RotationPolicy for RotationByDuration {
 pub struct RotationByDay;
 
 impl RotationByDay {
-
     pub fn new() -> Self {
-        RotationByDay { }
+        RotationByDay {}
+    }
+}
+
+impl Default for RotationByDay {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl RotationPolicy for RotationByDay {
-
     fn next_rotation(&self, last_rotation: DateTime<Local>) -> DateTime<Local> {
-        (last_rotation + time::Duration::days(1)).date().and_hms(0, 0, 0)
+        let next_day = (last_rotation + chrono::Duration::days(1)).date_naive();
+        let midnight = next_day.and_hms_opt(0, 0, 0).unwrap();
+        Local.from_local_datetime(&midnight).single().unwrap()
     }
 }

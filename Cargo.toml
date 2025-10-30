@@ -3,29 +3,25 @@ name = "jon-listen"
 version = "0.1.0"
 authors = ["cspinetta <cebs91@gmail.com>", "damdev <damian168@gmail.com>"]
 license = "Apache-2.0"
+edition = "2021"
 
 [dependencies]
-futures = "0.1"
-tokio-io = "0.1"
-tokio-core = "0.1"
-tokio-proto = "0.1"
-tokio-service = "0.1"
-net2 = "0.2"
-bytes = "0.4"
+futures = "0.3"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+socket2 = "0.5"
+bytes = "1"
 
-chrono = { version = "0.4", features = ["serde", "rustc-serialize"] }
-time = "0.1"
-glob = "0.2"
-log = "0.3"
-pretty_env_logger = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+glob = "0.3"
+log = "0.4"
+pretty_env_logger = "0.5"
 
-regex = "0.2"
+regex = "1"
 
-config = "0.9"
-serde_derive = "1.0.84"
-serde = "1.0.84"
-toml = "0.4"
+config = "0.14"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 
 [dev-dependencies]
-tokio-timer = "0.1"
 matches = "0.1"

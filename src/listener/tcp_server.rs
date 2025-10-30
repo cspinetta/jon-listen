@@ -1,116 +1,93 @@
-
 use std::net::SocketAddr;
-use std::thread::{self, JoinHandle};
 use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 
-use tokio_core::reactor::Core;
+use crate::settings::Settings;
+use futures::StreamExt;
+use tokio::net::{TcpListener, TcpStream};
+use tokio_util::codec::{FramedRead, LinesCodec};
 
-use tokio_core::net::TcpListener;
+use crate::writer::file_writer::FileWriterCommand;
+use std::sync::mpsc::SyncSender;
 
-use net2;
-use net2::unix::UnixTcpBuilderExt;
-
-use settings::Settings;
-
-use futures::future::{self, FutureResult};
-use futures::{Stream, Sink, Future};
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::codec::{Framed, Encoder, Decoder};
-
-use bytes::BytesMut;
-use tokio_proto::pipeline::ServerProto;
-use tokio_service::Service;
-use tokio_service::NewService;
-
-use ::writer::file_writer::FileWriterCommand;
-use std::sync::mpsc::{SyncSender, SendError};
-
+use log::{debug, info};
 use std::io;
-use std::str;
-use std::borrow::Borrow;
 
 pub struct TcpServer;
 
 impl TcpServer {
-
-    pub fn start(settings: Arc<Settings>, sender: SyncSender<FileWriterCommand>) -> Vec<JoinHandle<()>> {
-
-        let addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
+    pub fn start(
+        settings: Arc<Settings>,
+        sender: SyncSender<FileWriterCommand>,
+    ) -> Vec<JoinHandle<()>> {
+        let addr = format!("{}:{}", settings.server.host, settings.server.port)
+            .parse::<SocketAddr>()
+            .unwrap();
         let addr = Arc::new(addr);
 
         let mut threads = Vec::new();
 
-        for i in 0..settings.threads {
-            let settings_ref = settings.clone();
-            let sender_ref = sender.clone();
-            let addr_ref = addr.clone();
+        let settings_ref = settings.clone();
+        let sender_ref = sender.clone();
+        let addr_ref = addr.clone();
 
-            threads.push(thread::spawn(move || {
-                info!("Spawning thread {}", i);
+        threads.push(thread::spawn(move || {
+            info!("Spawning TCP thread");
 
-                let mut l = Core::new().unwrap();
-                let handle = l.handle();
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("failed to build runtime");
 
-                let tcp_listener = net2::TcpBuilder::new_v4().unwrap()
-                    .reuse_port(true).unwrap()
-                    .bind(addr_ref.clone().as_ref()).unwrap()
-                    .listen(128).unwrap(); // limit for pending connections. https://stackoverflow.com/a/36597268/3392786
+            runtime.block_on(async move {
+                let listener = TcpListener::bind(*addr_ref).await.expect("bind tcp");
+                loop {
+                    tokio::select! {
+                        res = listener.accept() => {
+                            match res {
+                                Ok((stream, _peer)) => {
+                                    let svc = TcpListenerService::new(0, sender_ref.clone(), settings_ref.clone());
+                                    tokio::spawn(handle_client(stream, svc));
+                                }
+                                Err(e) => {
+                                    eprintln!("accept error: {}", e);
+                                }
+                            }
+                        }
+                        _ = tokio::signal::ctrl_c() => {
+                            info!("TCP server received shutdown signal");
+                            break;
+                        }
+                    }
+                }
+            });
+        }));
 
-                let listener = TcpListener::from_listener(tcp_listener, addr_ref.as_ref(), &handle).unwrap();
-
-                let server = listener.incoming().for_each(|(tcp, _)| {
-
-                    let (writer, reader) = tcp.framed(LineCodec).split();
-                    let service = (|| Ok(TcpListenerService::new(i, sender_ref.clone(), settings_ref.clone()))).new_service()?;
-
-                    let responses = reader.and_then(move |req| service.call(req));
-                    let server = writer.send_all(responses)
-                        .then(|_| Ok(()));
-                    handle.spawn(server);
-
-                    Ok(())
-                });
-                l.run(server).unwrap();
-            }));
-        }
-
-        info!("Listening at {} via TCP with {} threads...", addr, settings.threads);
+        info!(
+            "Listening at {} via TCP with {} threads...",
+            addr, settings.threads
+        );
 
         threads
     }
 }
 
-pub struct LineCodec;
-
-impl Encoder for LineCodec {
-    type Item = ();
-    type Error = io::Error;
-
-    fn encode(&mut self, msg: (), buf: &mut BytesMut) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-impl Decoder for LineCodec {
-    type Item = String;
-    type Error = io::Error;
-
-    fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<String>> {
-        if let Some(i) = buf.iter().position(|&b| b == b'\n') {
-            let line = buf.split_to(i + 1);
-
-            // Turn this data into a UTF string and return it in a Frame.
-            match str::from_utf8(&line) {
-                Ok(s) => Ok(Some(s.to_string())),
-                Err(_) => Err(io::Error::new(io::ErrorKind::Other,
-                                             "invalid UTF-8")),
+async fn handle_client(stream: TcpStream, service: TcpListenerService) {
+    let mut reader = FramedRead::new(stream, LinesCodec::new());
+    while let Some(line) = reader.next().await {
+        match line {
+            Ok(l) => {
+                let _ = service.handle(l).await;
             }
-        } else {
-            Ok(None)
+            Err(e) => {
+                eprintln!("read error: {}", e);
+                break;
+            }
         }
     }
 }
 
+#[allow(dead_code)]
 struct TcpListenerService {
     pub id: i32,
     pub name: String,
@@ -119,33 +96,23 @@ struct TcpListenerService {
 }
 
 impl TcpListenerService {
-
-    pub fn new(id: i32, tx_file_writer: SyncSender<FileWriterCommand>, settings: Arc<Settings>) -> Self {
-
+    pub fn new(
+        id: i32,
+        tx_file_writer: SyncSender<FileWriterCommand>,
+        settings: Arc<Settings>,
+    ) -> Self {
         TcpListenerService {
             id,
             name: format!("server-tcp-{}", id),
             tx_file_writer,
-            settings
+            settings,
         }
     }
 
-}
-
-impl Service for TcpListenerService {
-    type Request = String;
-    type Response = ();
-    type Error = io::Error;
-    type Future = FutureResult<Self::Response, Self::Error>;
-
-    fn call(&self, req: Self::Request) -> Self::Future {
+    pub async fn handle(&self, req: String) -> Result<(), io::Error> {
         debug!("Received a log line in {}", self.name);
-        let sent_data = self.tx_file_writer
-            .send(FileWriterCommand::Write(req.clone().into_bytes()));
-        match sent_data {
-            Ok(_)  => future::ok(()),
-            Err(e) => future::err(io::Error::new(io::ErrorKind::Other,
-                                     format!("Error trying to send a log line to write: {}", e)))
-        }
+        self.tx_file_writer
+            .send(FileWriterCommand::Write(req.into_bytes()))
+            .map_err(|e| io::Error::other(format!("send error: {}", e)))
     }
 }

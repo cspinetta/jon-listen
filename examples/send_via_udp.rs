@@ -1,78 +1,22 @@
-#![feature(test)]
-
-#[macro_use]
-extern crate log;
-extern crate pretty_env_logger;
-#[macro_use]
-extern crate matches;
-
-extern crate test;
-
-extern crate tokio_core;
-#[macro_use]
-extern crate tokio_io;
-
-extern crate futures;
-
-extern crate jon_listen;
-extern crate net2;
-
-
-use jon_listen::App;
-
-use jon_listen::listener::udp_server;
-use jon_listen::writer::file_writer::FileWriterCommand;
-use jon_listen::settings::*;
-
-use tokio_core::net::UdpSocket;
-use tokio_core::reactor::Core;
-use net2::unix::UnixUdpBuilderExt;
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
-use std::path::PathBuf;
-
-use test::Bencher;
-
-use std::net::SocketAddr;
+use std::net::UdpSocket;
 use std::thread;
-use std::sync::Arc;
-
-use futures::sync::oneshot;
-use futures::{Future, Poll};
-use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
-
-
-fn settings_template() -> Settings {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards");
-    let filename = format!("writer_test_{}.log", now.subsec_nanos());
-    let server = ServerConfig { protocol: ProtocolType::UDP, host: "0.0.0.0".to_string(), port: 9999 };
-    let rotation_policy_config = RotationPolicyConfig { count: 10, policy: RotationPolicyType::ByDuration, duration: Option::Some(9999) };
-    let formatting_config = FormattingConfig { startingmsg: false, endingmsg: false };
-    let file_config = FileWriterConfig { filedir: PathBuf::from(r"/tmp/"), filename, rotation: rotation_policy_config, formatting: formatting_config };
-    Settings { debug: false, threads: 5, buffer_bound: 20, server, filewriter: file_config }
-}
+use std::time::Duration;
 
 fn main() {
-    pretty_env_logger::init().unwrap();
+    // Minimal example: send many UDP messages to an address.
+    let addr = std::env::args().nth(1).unwrap_or("127.0.0.1:8080".into());
+    let count: usize = std::env::args()
+        .nth(2)
+        .unwrap_or("1000".into())
+        .parse()
+        .unwrap_or(1000);
 
-    let settings = Arc::new(settings_template());
-    let settings_ref = settings.clone();
-
-    info!("Settings: {:?}", settings);
-
-    let server_join = thread::spawn(move || {
-        App::start_up(settings_ref);
-    });
-
-    let server_addr = format!("{}:{}", settings.server.host, settings.server.port).parse::<SocketAddr>().unwrap();
-    let any_addr = "127.0.0.1:0".to_string().parse::<SocketAddr>().unwrap();
-    let client = std::net::UdpSocket::bind(&any_addr).unwrap();
-
+    let any = "127.0.0.1:0";
+    let client = UdpSocket::bind(any).expect("bind udp");
     thread::sleep(Duration::from_millis(1));
 
-    for i in 1..10000 {
-        trace!("Sending message {}", i);
-        let msg = format!("Message # {}", i);
-        client.send_to(msg.as_ref(), &server_addr).unwrap();
-    };
-
+    for i in 1..=count {
+        let msg = format!("Message # {}\n", i);
+        let _ = client.send_to(msg.as_bytes(), &addr).expect("send_to");
+    }
 }
