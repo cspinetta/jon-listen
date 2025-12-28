@@ -3,62 +3,43 @@ use tokio::net::UdpSocket;
 use std::io;
 use std::net::SocketAddr;
 
+use crate::listener::metrics;
 use crate::settings::Settings;
+use crate::writer::backpressure::BackpressureAwareSender;
 use crate::writer::file_writer::FileWriterCommand;
 
-use log::{debug, info};
-use std::sync::mpsc::SyncSender;
+use log::{debug, error, info};
 use std::sync::Arc;
-use std::thread::{self, JoinHandle};
+use tokio::sync::broadcast;
 
 pub struct UdpServer;
 
 impl UdpServer {
-    pub fn start(
+    pub async fn start(
         settings: Arc<Settings>,
-        sender: SyncSender<FileWriterCommand>,
-    ) -> Vec<JoinHandle<()>> {
+        sender: BackpressureAwareSender,
+        shutdown_rx: broadcast::Receiver<()>,
+    ) -> Result<(), io::Error> {
         let addr = format!("{}:{}", settings.server.host, settings.server.port)
             .parse::<SocketAddr>()
             .unwrap();
-        let addr = Arc::new(addr);
 
-        let mut threads: Vec<JoinHandle<()>> = Vec::new();
+        info!("Listening at {} via UDP...", addr);
 
-        let settings_ref = settings.clone();
-        let tx_file_writer = sender.clone();
-        let addr_ref = addr.clone();
-        threads.push(thread::spawn(move || {
-            info!("Spawning UDP thread");
+        let socket = UdpSocket::bind(addr).await?;
+        let mut service = UdpService::new(socket, sender, 0, settings);
 
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("failed to build runtime");
+        // Pass shutdown receiver to run() so it can check for shutdown signals
+        match service.run(shutdown_rx).await {
+            Ok(()) => {
+                info!("UDP server shutting down gracefully");
+            }
+            Err(e) => {
+                error!("UDP service error: {}", e);
+            }
+        }
 
-            runtime.block_on(async move {
-                let socket = UdpSocket::bind(*addr_ref).await.expect("bind udp");
-                let mut service = UdpService::new(socket, tx_file_writer, 0, settings_ref);
-                loop {
-                    tokio::select! {
-                        res = service.run() => {
-                            let _ = res; // if run returns, continue to check shutdown
-                        }
-                        _ = tokio::signal::ctrl_c() => {
-                            info!("UDP server received shutdown signal");
-                            break;
-                        }
-                    }
-                }
-            });
-        }));
-
-        info!(
-            "Listening at {} via UDP with {} threads...",
-            addr, settings.threads
-        );
-
-        threads
+        Ok(())
     }
 }
 
@@ -67,7 +48,7 @@ pub struct UdpService {
     pub name: String,
     pub socket: UdpSocket,
     pub buf: Vec<u8>,
-    pub writer_sender: SyncSender<FileWriterCommand>,
+    pub writer_sender: BackpressureAwareSender,
     settings: Arc<Settings>,
     count: i32,
 }
@@ -75,7 +56,7 @@ pub struct UdpService {
 impl UdpService {
     pub fn new(
         s: UdpSocket,
-        writer_sender: SyncSender<FileWriterCommand>,
+        writer_sender: BackpressureAwareSender,
         id: i32,
         settings: Arc<Settings>,
     ) -> Self {
@@ -90,26 +71,41 @@ impl UdpService {
         }
     }
 
-    pub async fn run(&mut self) -> Result<(), io::Error> {
+    pub async fn run(&mut self, mut shutdown_rx: broadcast::Receiver<()>) -> Result<(), io::Error> {
         loop {
-            let (size, _peer) = self.socket.recv_from(&mut self.buf).await?;
-            if self.settings.debug {
-                self.count += 1;
-                info!(
-                    "Poll datagram from server {}. Count: {}",
-                    self.name, self.count
-                );
-                let _ = self.writer_sender.send(FileWriterCommand::WriteDebug(
-                    self.name.clone(),
-                    self.buf[..size].to_vec(),
-                    self.count,
-                ));
-            } else {
-                debug!("Poll datagram from server {}.", self.name);
-                let _ = self
-                    .writer_sender
-                    .send(FileWriterCommand::Write(self.buf[..size].to_vec()));
+            tokio::select! {
+                res = self.socket.recv_from(&mut self.buf) => {
+                    let (size, _peer) = res?;
+                    metrics::udp::datagram_received();
+                    crate::metrics::messages::received();
+                    if self.settings.debug {
+                        self.count += 1;
+                        info!(
+                            "Poll datagram from server {}. Count: {}",
+                            self.name, self.count
+                        );
+                        let _ = self
+                            .writer_sender
+                            .send(FileWriterCommand::WriteDebug(
+                                self.name.clone(),
+                                self.buf[..size].to_vec(),
+                                self.count,
+                            ))
+                            .await;
+                    } else {
+                        debug!("Poll datagram from server {}.", self.name);
+                        let _ = self
+                            .writer_sender
+                            .send(FileWriterCommand::Write(self.buf[..size].to_vec()))
+                            .await;
+                    }
+                }
+                _ = shutdown_rx.recv() => {
+                    info!("UdpService received shutdown signal");
+                    break;
+                }
             }
         }
+        Ok(())
     }
 }

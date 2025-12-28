@@ -23,5 +23,12 @@ config = "0.14"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 
+anyhow = "1.0"
+thiserror = "1.0"
+
+metrics = "0.16"
+metrics-exporter-prometheus = "0.5"
+
 [dev-dependencies]
 matches = "0.1"
+tempfile = "3.8"

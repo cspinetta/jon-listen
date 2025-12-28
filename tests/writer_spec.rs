@@ -1,6 +1,6 @@
 use log::info;
 
-use jon_listen::settings::*;
+use jon_listen::settings::{BackpressurePolicy, *};
 use jon_listen::writer::file_writer::FileWriterCommand;
 use jon_listen::writer::file_writer::*;
 
@@ -11,6 +11,7 @@ use std::io::BufReader;
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::broadcast;
 
 fn settings_template() -> Settings {
     let now = SystemTime::now()
@@ -21,6 +22,7 @@ fn settings_template() -> Settings {
         protocol: ProtocolType::UDP,
         host: "0.0.0.0".to_string(),
         port: 0,
+        max_connections: 1000,
     };
     let rotation_policy_config = RotationPolicyConfig {
         count: 10,
@@ -36,6 +38,7 @@ fn settings_template() -> Settings {
         filename,
         rotation: rotation_policy_config,
         formatting: formatting_config,
+        backpressure_policy: BackpressurePolicy::Block,
     };
     Settings {
         debug: false,
@@ -43,11 +46,12 @@ fn settings_template() -> Settings {
         buffer_bound: 20,
         server,
         filewriter: file_config,
+        metrics_port: 9090,
     }
 }
 
-#[test]
-fn it_writes_multiple_messages() {
+#[tokio::test]
+async fn it_writes_multiple_messages() {
     pretty_env_logger::init();
 
     let settings = settings_template();
@@ -55,18 +59,35 @@ fn it_writes_multiple_messages() {
 
     info!("Settings: {:?}", settings);
 
-    let file_writer = FileWriter::new(settings.buffer_bound, settings.filewriter.clone());
+    let mut file_writer = FileWriter::new(settings.buffer_bound, settings.filewriter.clone())
+        .await
+        .expect("Failed to create FileWriter");
 
     let file_writer_tx = file_writer.tx.clone();
 
+    // Create shutdown channels for the test (won't be used, but required by API)
+    let (shutdown_tx, _) = broadcast::channel(1);
+    let shutdown_rx1 = shutdown_tx.subscribe();
+    let shutdown_rx2 = shutdown_tx.subscribe();
+
     // Start Writer
-    let _join_handle = file_writer.start_async();
+    let _join_handle = tokio::spawn(async move {
+        file_writer
+            .start(shutdown_rx1, shutdown_rx2)
+            .await
+            .expect("FileWriter failed");
+    });
 
     // Send messages
     info!("Sending {} messages", msgs.len());
     for msg in &msgs {
-        let _ = file_writer_tx.send(FileWriterCommand::Write(msg.as_bytes().to_vec()));
+        let _ = file_writer_tx
+            .send(FileWriterCommand::Write(msg.as_bytes().to_vec()))
+            .await;
     }
+
+    // Give the writer time to process messages
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     let mut file_path = settings.filewriter.filedir.clone();
     file_path.push(settings.filewriter.filename.clone());

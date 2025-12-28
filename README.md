@@ -1,10 +1,30 @@
 Jon Listen
 =================================
-[![Build Status](https://travis-ci.org/cspinetta/jon-listen.svg?branch=master)](https://travis-ci.org/cspinetta/jon-listen)
+[![CI](https://github.com/cspinetta/jon-listen/workflows/CI/badge.svg)](https://github.com/cspinetta/jon-listen/actions)
 
-Simple and multithreading TCP/UDP logger. It writes data to a plain text file and it also provides additional functionalities such as log file rotation, control the number of rotated files, etc.
+A high-performance network logging server that receives log messages over TCP or UDP and writes them to files with automatic rotation. Built with Rust and Tokio for async I/O.
 
-Written in [Rust] language.
+## What is Jon Listen?
+
+Jon Listen is a network logging server that:
+- **Receives logs** from applications over TCP or UDP
+- **Writes logs** to plain text files with automatic rotation
+- **Provides metrics** via Prometheus endpoint for monitoring
+- **Handles backpressure** with configurable policies (block or discard)
+- **Supports high concurrency** with async/await architecture
+
+Perfect for centralized logging, log aggregation, or as a simple log sink for distributed systems.
+
+## Features
+
+- **Protocol Support**: TCP and UDP server modes
+- **File Rotation**: Automatic rotation by day or duration with configurable retention
+- **Backpressure Handling**: Configurable policies (Block or Discard) when buffers are full
+- **Connection Limits**: Configurable maximum concurrent TCP connections (default: 1000)
+- **Prometheus Metrics**: Built-in metrics endpoint for monitoring (default port: 9090)
+- **Graceful Shutdown**: Clean shutdown on SIGTERM/SIGINT
+- **Environment Configuration**: Override settings via environment variables
+- **Async Architecture**: Built on Tokio for high-performance async I/O
 
 ![alt text](https://upload.wikimedia.org/wikipedia/commons/4/44/Jon_Postel.jpg)
 
@@ -19,40 +39,83 @@ rustup install stable
 rustup default stable
 ```
 
-## Start server
+## Quick Start
 
-Run from the terminal:
+1. **Start the server**:
 
 ```bash
 RUST_LOG=info cargo run
 ```
 
-- Press Ctrl+C to gracefully stop the server.
+The server will start listening on the configured host and port (default: `0.0.0.0:8080`). It will write received messages to log files in the configured directory.
 
-## Config file
-The config is written in [TOML].
-Default config is set in [./config/default.toml](https://github.com/cspinetta/jon-listen/blob/master/config/default.toml).
-Optionally you can add a config file by environment setting `RUN_MODE={development|production|anything}` in your environment and providing the appropriate file: `./config/{development|production|anything}.toml`
-
-### Config from the environment
-
-You can provide environment variable to define log level and override configuration:
-
-* Log level: `RUST_LOG={debug|info|warn|error}`. You can set per-module levels: `RUST_LOG=writer=debug` enables debug for the `writer` module.
-* Override config: define variables with a prefix of `APP_`. Eg:
-
-`APP_filewriter_rotation_policy=ByDay` would set:
-
-```toml
-[filewriter.rotation]
-policy = "ByDay"
-```
-
-*Running with inline environment variable from the terminal:*
+2. **Send logs** (using the example client):
 
 ```bash
-RUST_LOG=info APP_filewriter_rotation_policy=ByDuration cargo run
+# UDP
+cargo run --example logging_client -- --address 127.0.0.1:8080 --duration 10
+
+# TCP
+cargo run --example logging_client -- --address 127.0.0.1:8080 --duration 10 --tcp
 ```
+
+3. **View metrics** (if metrics are enabled):
+
+```bash
+curl http://localhost:9090/metrics
+```
+
+4. **Stop the server**: Press Ctrl+C for graceful shutdown.
+
+## Configuration
+
+Configuration is written in [TOML] format. The default configuration is in [`config/default.toml`](config/default.toml).
+
+### Configuration Files
+
+Jon Listen loads configuration in this order (later values override earlier ones):
+
+1. `config/default.toml` (required)
+2. `config/{RUN_MODE}.toml` (optional, e.g., `config/development.toml` or `config/production.toml`)
+3. `config/local.toml` (optional, for local overrides)
+4. Environment variables with `APP_` prefix
+
+Set `RUN_MODE` environment variable to load environment-specific config:
+
+```bash
+RUN_MODE=production cargo run
+```
+
+### Key Configuration Options
+
+- **Server**: Protocol (TCP/UDP), host, port, max connections
+- **File Writer**: Directory, filename, rotation policy, backpressure policy
+- **Rotation**: Policy (ByDay/ByDuration), retention count, duration
+- **Metrics**: Prometheus metrics port (default: 9090)
+
+### Environment Variables
+
+**Log Level**: Control application logging with `RUST_LOG`:
+
+```bash
+RUST_LOG=info cargo run                    # Set global log level
+RUST_LOG=writer=debug cargo run            # Set per-module log level
+```
+
+**Configuration Overrides**: Override any config value using `APP_` prefix:
+
+```bash
+# Override rotation policy
+APP_filewriter_rotation_policy=ByDuration cargo run
+
+# Override server port
+APP_server_port=9000 cargo run
+
+# Override multiple settings
+RUST_LOG=info APP_server_port=9000 APP_filewriter_rotation_policy=ByDay cargo run
+```
+
+The environment variable naming follows the TOML structure: `APP_{section}_{key}` or `APP_{section}_{subsection}_{key}`.
 
 
 ## Run tests
@@ -62,6 +125,28 @@ Execute from the terminal:
 ```bash
 cargo test
 ```
+
+For test statistics summary, use `cargo-nextest`:
+
+```bash
+cargo install cargo-nextest
+cargo nextest run
+```
+
+### Test Coverage
+
+Generate a coverage report:
+
+```bash
+./scripts/coverage.sh
+```
+
+This will:
+- Install `cargo-tarpaulin` if not already installed
+- Generate an HTML coverage report in `./coverage/tarpaulin-report.html`
+- Display a coverage summary in the terminal
+
+Open `./coverage/tarpaulin-report.html` in your browser to view detailed line-by-line coverage.
 
 ### Examples
 

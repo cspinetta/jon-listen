@@ -2,11 +2,13 @@
 debug = false
 threads = 10
 buffer_bound = 50
+# metrics_port = 9090  # Port for Prometheus metrics endpoint (default: 9090)
 
 [server]
 protocol = "UDP"  # "UDP" | "TCP"
 host = "0.0.0.0"
 port = 8080
+# max_connections = 1000  # Maximum concurrent TCP connections (default: 1000, only applies to TCP)
 
 [filewriter]
 filedir = "./"
@@ -20,3 +22,7 @@ filename = "log"
   [filewriter.formatting]
   startingmsg = true
   endingmsg = true
+
+  # backpressure_policy = "Discard"  # "Block" | "Discard" (default: "Discard")
+  #   Block: Wait until space is available (provides natural backpressure)
+  #   Discard: Drop messages when channel is full (allows continued ingestion, default)
