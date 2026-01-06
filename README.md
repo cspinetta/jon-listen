@@ -2,33 +2,122 @@ Jon Listen
 =================================
 [![CI](https://github.com/cspinetta/jon-listen/workflows/CI/badge.svg)](https://github.com/cspinetta/jon-listen/actions)
 
-A high-performance network logging server that receives log messages over TCP or UDP and writes them to files with automatic rotation. Built with Rust and Tokio for async I/O.
+A **minimal, high-performance network log collector** that receives log messages over TCP or UDP and writes them to rotating files.
 
-## What is Jon Listen?
-
-Jon Listen is a network logging server that:
-- **Receives logs** from applications over TCP or UDP
-- **Writes logs** to plain text files with automatic rotation
-- **Provides metrics** via Prometheus endpoint for monitoring
-- **Handles backpressure** with configurable policies (block or discard)
-- **Supports high concurrency** with async/await architecture
-
-Perfect for centralized logging, log aggregation, or as a simple log sink for distributed systems.
-
-## Features
-
-- **Protocol Support**: TCP and UDP server modes
-- **File Rotation**: Automatic rotation by day or duration with configurable retention
-- **Backpressure Handling**: Configurable policies (Block or Discard) when buffers are full
-- **Connection Limits**: Configurable maximum concurrent TCP connections (default: 1000)
-- **Prometheus Metrics**: Built-in metrics endpoint for monitoring (default port: 9090)
-- **Graceful Shutdown**: Clean shutdown on SIGTERM/SIGINT
-- **Environment Configuration**: Override settings via environment variables
-- **Async Architecture**: Built on Tokio for high-performance async I/O
+Built in **Rust** on **Tokio** for predictable performance, bounded resource usage, and operational simplicity.
 
 ![alt text](https://upload.wikimedia.org/wikipedia/commons/4/44/Jon_Postel.jpg)
 
 > *[Jon Postel] in 1994, with map of Internet top-level domains.*
+
+## What it does (and what it doesn’t)
+
+**Jon Listen is a log _collector_, not a logging platform.**
+
+It does one thing well:
+
+> **Accept log events over the network and persist them safely to disk.**
+
+### What it does
+- Listens on **TCP or UDP**
+- Accepts **arbitrary text**
+- Uses **explicit event framing**
+- Writes to **plain text files**
+- Rotates files deterministically
+- Applies **explicit backpressure policies**
+- Exposes **Prometheus metrics**
+- Stays small, auditable, and predictable
+
+### What it does NOT do
+- Parse syslog (RFC3164 / RFC5424)
+- Parse or validate JSON
+- Enrich, transform, or filter messages
+- Route logs to multiple destinations
+- Act as a logging pipeline or platform
+- Replace Fluent Bit, Vector, or Logstash
+
+If you need parsing, enrichment, routing, or multiple sinks, a full logging **platform** is a better fit.
+
+## Event framing semantics
+
+Event boundaries are explicit and intentional:
+
+- **TCP**
+  - Stream-based
+  - **Newline (`\n`) delimited**
+  - Multiple events per connection
+- **UDP**
+  - Datagram-based
+  - **One event per datagram**
+  - A trailing newline is appended if missing
+
+Jon Listen does **not** interpret message contents.
+
+## Typical use cases
+
+Jon Listen is a good fit when you want:
+
+- A **single binary** with no plugin ecosystem
+- A **drop-in network log sink**
+- No syslog semantics or formatting requirements
+- Explicit control over **file rotation and backpressure**
+- Logs written **directly to disk**
+- A tool you can understand in minutes, not days
+
+Common scenarios:
+- Centralized log capture for internal services
+- Edge, appliance, or air-gapped environments
+- Incident capture / temporary aggregation
+- Replacing ad-hoc `nc | logrotate`-style setups
+- Existing applications with custom TCP/UDP appenders
+
+## Comparison with other log solutions
+
+| Tool | Category | Message format | Typical role |
+|-----|--------|----------------|--------------|
+| **Jon Listen** | Collector | Arbitrary text | Simple network sink |
+| **syslog (rsyslog / syslog-ng)** | Collector / Router | Syslog format | OS-level logging |
+| **Vector** | Platform | Structured / parsed | Observability pipeline |
+| **Fluent Bit** | Platform | Structured / parsed | Log forwarding agent |
+
+### Key differences
+
+**Jon Listen vs syslog**
+- Accepts **any text**
+- No syslog framing, PRI, facilities, or severities
+- Lower cognitive overhead for application developers
+- Explicit file rotation and backpressure semantics
+
+**Jon Listen vs Vector / Fluent Bit**
+- Not a pipeline
+- No parsing, routing, or plugins
+- Smaller footprint and simpler configuration
+- Designed as a sink, not an agent or platform
+
+## Features
+
+- **Protocols**: TCP and UDP
+- **Event framing**: newline-delimited (TCP), datagram-delimited (UDP)
+- **File rotation**: by day or duration, configurable retention
+- **Backpressure**: Block or Discard policies
+- **Connection limits**: configurable max concurrent TCP connections
+- **Metrics**: Prometheus endpoint
+- **Graceful shutdown**: SIGTERM / SIGINT handling
+- **Async I/O**: Tokio-based architecture
+
+## Near-term improvements
+
+The following items are being considered to further harden Jon Listen **as a log collector**.
+This is not a commitment or a timeline, but a statement of direction.
+
+| Feature | Description | Scope |
+|-------|------------|-------|
+| **TLS (TCP)** | Encrypt log transport over TCP | Security |
+| **mTLS (TCP)** | Mutual authentication using client certificates | Security |
+| **Connection rate limiting** | Limit new connections per time period (currently only max concurrent connections is implemented) | Safety |
+| **Max line size enforcement** | Prevent unbounded memory usage from oversized messages | Safety |
+| **Metrics hardening** | Configurable bind address, clearer failure metrics | Operability |
+| **SIGHUP reload (optional)** | Reload config or reopen files without restart | Operability |
 
 ## Requirements
 
@@ -38,6 +127,49 @@ Perfect for centralized logging, log aggregation, or as a simple log sink for di
 rustup install stable
 rustup default stable
 ```
+
+## Building the binary
+
+Jon Listen is designed to run as a **single standalone binary**.
+
+### Build a release binary
+
+```bash
+cargo build --release
+```
+
+The binary will be available at:
+
+```bash
+target/release/jon-listen
+```
+
+You can copy this binary to another machine and run it directly.
+
+## Run the binary
+
+```bash
+RUST_LOG=info ./target/release/jon-listen
+```
+
+By default, Jon Listen loads configuration from the `config/` directory relative to the working directory.
+
+### Optional: static binary (Linux)
+
+To build a static binary using musl:
+
+```bash
+rustup target add x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl
+```
+
+The resulting binary:
+
+```bash
+target/x86_64-unknown-linux-musl/release/jon-listen
+```
+
+This is useful for minimal containers or systems without a full libc.
 
 ## Quick Start
 
@@ -76,7 +208,7 @@ Configuration is written in [TOML] format. The default configuration is in [`con
 Jon Listen loads configuration in this order (later values override earlier ones):
 
 1. `config/default.toml` (required)
-2. `config/{RUN_MODE}.toml` (optional, e.g., `config/development.toml` or `config/production.toml`)
+2. `config/{RUN_MODE}.toml` (optional, defaults to `config/development.toml` if `RUN_MODE` is not set)
 3. `config/local.toml` (optional, for local overrides)
 4. Environment variables with `APP_` prefix
 
@@ -85,6 +217,8 @@ Set `RUN_MODE` environment variable to load environment-specific config:
 ```bash
 RUN_MODE=production cargo run
 ```
+
+If `RUN_MODE` is not set, it defaults to `development` and will attempt to load `config/development.toml` (if it exists).
 
 ### Key Configuration Options
 

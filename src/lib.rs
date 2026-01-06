@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use listener::Listener;
-use log::info;
+use log::{error, info, warn};
 use settings::Settings;
 use tokio::sync::broadcast;
 use writer::file_writer::FileWriter;
@@ -66,7 +66,7 @@ impl App {
                         false // Component completed, not a graceful shutdown
                     }
                     Err(e) => {
-                        eprintln!("Listener task failed: {:#}", e);
+                        error!("Listener task failed: {:#}", e);
                         false // Component failed, not a graceful shutdown
                     }
                 }
@@ -78,7 +78,7 @@ impl App {
                         false // Component completed, not a graceful shutdown
                     }
                     Err(e) => {
-                        eprintln!("FileWriter task failed: {:#}", e);
+                        error!("FileWriter task failed: {:#}", e);
                         false // Component failed, not a graceful shutdown
                     }
                 }
@@ -106,18 +106,18 @@ impl App {
                     result = &mut listener_handle => {
                         match result {
                             Ok(_) => info!("Listener task completed gracefully"),
-                            Err(e) => eprintln!("Listener task join error: {:#}", e),
+                            Err(e) => error!("Listener task join error: {:#}", e),
                         }
                     }
                     _ = tokio::time::sleep(shutdown_timeout) => {
-                        eprintln!("Warning: Listener shutdown timeout reached");
+                        warn!("Listener shutdown timeout reached");
                     }
                 }
             } else {
                 // Task already completed, just get the result
                 match listener_handle.await {
                     Ok(_) => info!("Listener task already completed"),
-                    Err(e) => eprintln!("Listener task join error: {:#}", e),
+                    Err(e) => error!("Listener task join error: {:#}", e),
                 }
             }
 
@@ -128,18 +128,18 @@ impl App {
                     result = &mut file_writer_handle => {
                         match result {
                             Ok(_) => info!("FileWriter task completed gracefully"),
-                            Err(e) => eprintln!("FileWriter task join error: {:#}", e),
+                            Err(e) => error!("FileWriter task join error: {:#}", e),
                         }
                     }
                     _ = tokio::time::sleep(remaining_timeout) => {
-                        eprintln!("Warning: FileWriter shutdown timeout reached");
+                        warn!("FileWriter shutdown timeout reached");
                     }
                 }
             } else {
                 // Task already completed, just get the result
                 match file_writer_handle.await {
                     Ok(_) => info!("FileWriter task already completed"),
-                    Err(e) => eprintln!("FileWriter task join error: {:#}", e),
+                    Err(e) => error!("FileWriter task join error: {:#}", e),
                 }
             }
         }

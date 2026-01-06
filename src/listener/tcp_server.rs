@@ -12,7 +12,7 @@ use crate::writer::backpressure::BackpressureAwareSender;
 use crate::writer::file_writer::FileWriterCommand;
 use tokio::sync::broadcast;
 
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::io;
 
 pub struct TcpServer;
@@ -71,7 +71,7 @@ impl TcpServer {
                             });
                         }
                         Err(e) => {
-                            eprintln!("accept error: {}", e);
+                            error!("accept error: {}", e);
                         }
                     }
                 }
@@ -101,7 +101,7 @@ async fn handle_client(
                         let _ = service.handle(l).await;
                     }
                     Some(Err(e)) => {
-                        eprintln!("read error: {}", e);
+                        error!("read error: {}", e);
                         break;
                     }
                     None => {

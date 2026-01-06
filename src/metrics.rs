@@ -1,14 +1,22 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 
 /// Global handle for rendering Prometheus metrics
-static METRICS_HANDLE: std::sync::OnceLock<Arc<metrics_exporter_prometheus::PrometheusHandle>> =
-    std::sync::OnceLock::new();
+static METRICS_HANDLE: OnceLock<Arc<PrometheusHandle>> = OnceLock::new();
 
 /// Initialize metrics and set up Prometheus exporter
+/// This function is idempotent - calling it multiple times is safe.
+/// If metrics are already initialized, it returns Ok(()) without re-initializing.
 pub fn init(metrics_port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    // If metrics are already initialized, return success
+    if METRICS_HANDLE.get().is_some() {
+        return Ok(());
+    }
+
     // Set up Prometheus exporter
     // Build the recorder first to get the handle, then install it
-    let recorder = metrics_exporter_prometheus::PrometheusBuilder::new().build();
+    let recorder = PrometheusBuilder::new().build();
     let handle = recorder.handle();
 
     // Store handle globally before installing (since install consumes the recorder)
@@ -31,7 +39,7 @@ pub fn init(metrics_port: u16) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Get the Prometheus handle for rendering metrics
-pub fn get_handle() -> Option<Arc<metrics_exporter_prometheus::PrometheusHandle>> {
+pub fn get_handle() -> Option<Arc<PrometheusHandle>> {
     METRICS_HANDLE.get().cloned()
 }
 

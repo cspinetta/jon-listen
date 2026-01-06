@@ -7,6 +7,7 @@ use crate::metrics::messages;
 use crate::settings::BackpressurePolicy;
 use crate::writer::file_writer::FileWriterCommand;
 use crate::writer::metrics;
+use log::warn;
 
 /// Helper for sending messages to FileWriter with backpressure detection and logging
 pub struct BackpressureAwareSender {
@@ -38,7 +39,7 @@ impl BackpressureAwareSender {
     /// - Block: Waits until space is available (provides natural backpressure)
     /// - Discard: Drops the message and logs a warning
     ///
-    /// Logs to stderr (not through FileWriter) to avoid feedback loops.
+    /// Logs to stderr via the logger (not through FileWriter) to avoid feedback loops.
     pub async fn send(
         &self,
         command: FileWriterCommand,
@@ -72,8 +73,8 @@ impl BackpressureAwareSender {
                         };
 
                         if should_log {
-                            eprintln!(
-                                "WARNING: FileWriter channel is full (capacity: {}). {} backpressure events detected. \
+                            warn!(
+                                "FileWriter channel is full (capacity: {}). {} backpressure events detected. \
                                  Message ingestion will block until FileWriter processes messages and clears space. \
                                  This indicates backpressure - FileWriter may be slower than message rate.",
                                 self.sender.capacity(),
@@ -102,8 +103,8 @@ impl BackpressureAwareSender {
                         };
 
                         if should_log {
-                            eprintln!(
-                                "WARNING: FileWriter channel is full (capacity: {}). {} backpressure events detected. \
+                            warn!(
+                                "FileWriter channel is full (capacity: {}). {} backpressure events detected. \
                                  {} messages dropped so far. Message discarded (backpressure_policy=Discard). \
                                  This indicates backpressure - FileWriter may be slower than message rate.",
                                 self.sender.capacity(),
@@ -121,7 +122,7 @@ impl BackpressureAwareSender {
             }
             Err(mpsc::error::TrySendError::Closed(msg)) => {
                 // Channel closed - log once and return error
-                eprintln!("ERROR: FileWriter channel closed. Message dropped.");
+                warn!("FileWriter channel closed. Message dropped.");
                 Err(mpsc::error::SendError(msg))
             }
         }

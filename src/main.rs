@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use log::info;
+use log::{error, info};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -64,10 +64,10 @@ async fn main() -> Result<()> {
                 // Signal handler completed successfully
             }
             Ok(Err(err)) => {
-                eprintln!("Signal handler task failed: {:#}", err);
+                error!("Signal handler task failed: {:#}", err);
             }
             Err(join_err) => {
-                eprintln!("Signal handler task panicked: {:?}", join_err);
+                error!("Signal handler task panicked: {:?}", join_err);
             }
         }
     });
@@ -87,7 +87,7 @@ async fn start_metrics_server(port: u16, mut shutdown_rx: tokio::sync::broadcast
     let listener = match TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("Failed to bind metrics server to {}: {}", addr, e);
+            error!("Failed to bind metrics server to {}: {}", addr, e);
             return;
         }
     };
@@ -122,7 +122,7 @@ async fn start_metrics_server(port: u16, mut shutdown_rx: tokio::sync::broadcast
                         });
                     }
                     Err(e) => {
-                        eprintln!("Metrics server accept error: {}", e);
+                        error!("Metrics server accept error: {}", e);
                     }
                 }
             }

@@ -5,7 +5,7 @@ buffer_bound = 50
 # metrics_port = 9090  # Port for Prometheus metrics endpoint (default: 9090)
 
 [server]
-protocol = "UDP"  # "UDP" | "TCP"
+protocol = "TCP"  # "UDP" | "TCP"
 host = "0.0.0.0"
 port = 8080
 # max_connections = 1000  # Maximum concurrent TCP connections (default: 1000, only applies to TCP)

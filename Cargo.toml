@@ -32,3 +32,10 @@ metrics-exporter-prometheus = "0.5"
 [dev-dependencies]
 matches = "0.1"
 tempfile = "3.8"
+
+[profile.release]
+opt-level = 3          # Maximum optimization
+lto = true             # Link Time Optimization for better performance
+codegen-units = 1      # Better optimization (slower compile, faster runtime)
+panic = 'abort'        # Reduce binary size by removing unwinding code
+strip = true           # Remove debug symbols to reduce binary size

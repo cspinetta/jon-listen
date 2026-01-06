@@ -32,34 +32,31 @@ fn test_metrics_init_initializes_prometheus_recorder() {
 }
 
 #[test]
-fn test_metrics_init_error_handling_for_double_initialization() {
+fn test_metrics_init_is_idempotent() {
     let first_result = metrics::init(9092);
+    assert!(first_result.is_ok(), "First initialization should succeed");
 
-    if first_result.is_ok() {
-        let second_result = metrics::init(9092);
-        assert!(
-            second_result.is_err(),
-            "Second initialization should fail with error"
-        );
-        let err_msg = format!("{}", second_result.unwrap_err());
-        assert!(
-            err_msg.contains("already initialized") || err_msg.contains("initialized"),
-            "Error message should indicate double initialization, got: {}",
-            err_msg
-        );
+    // Second initialization should also succeed (idempotent)
+    let second_result = metrics::init(9092);
+    assert!(
+        second_result.is_ok(),
+        "Second initialization should succeed (idempotent behavior)"
+    );
 
-        let handle = metrics::get_handle();
-        assert!(
-            handle.is_some(),
-            "Handle should still be available after double initialization error"
-        );
-    } else {
-        let second_result = metrics::init(9092);
-        assert!(
-            second_result.is_err(),
-            "Double initialization should fail when metrics already initialized"
-        );
-    }
+    // Handle should still be available
+    let handle = metrics::get_handle();
+    assert!(
+        handle.is_some(),
+        "Handle should be available after initialization"
+    );
+
+    // Metrics should still work after idempotent initialization
+    metrics::messages::received();
+    let output = handle.unwrap().render();
+    assert!(
+        output.contains("messages_received_total"),
+        "Metrics should work after idempotent initialization"
+    );
 }
 
 #[test]
@@ -119,7 +116,8 @@ fn test_metrics_messages_written_increments_counter() {
     let output = handle.unwrap().render();
     assert!(
         output.contains("messages_written_total"),
-        "Metrics output should contain messages_written_total counter"
+        "Metrics output should contain messages_written_total counter, got: {}",
+        output
     );
 }
 

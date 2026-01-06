@@ -471,35 +471,38 @@ mod unit_tests {
 
     #[tokio::test]
     async fn test_tcp_server_metrics_connection_accepted() {
+        // Initialize metrics (may fail if already initialized, that's ok)
         let _ = metrics::init(9107);
 
         jon_listen::listener::metrics::tcp::connection_accepted();
         jon_listen::listener::metrics::tcp::connection_accepted();
 
-        if let Some(handle) = metrics::get_handle() {
-            let output = handle.render();
-            assert!(
-                output.contains("tcp_connections_total") || output.contains("tcp_connections"),
-                "Metrics output should contain tcp_connections metric, got: {}",
-                output
-            );
-        }
+        let handle = metrics::get_handle();
+        assert!(handle.is_some(), "Metrics handle should be available");
+        let output = handle.unwrap().render();
+        assert!(
+            output.contains("tcp_connections_total") || output.contains("tcp_connections"),
+            "Metrics output should contain tcp_connections metric, got: {}",
+            output
+        );
     }
 
     #[tokio::test]
     async fn test_tcp_server_metrics_connection_active() {
+        // Initialize metrics (may fail if already initialized, that's ok)
         let _ = metrics::init(9108);
 
         jon_listen::listener::metrics::tcp::connection_active(5);
         jon_listen::listener::metrics::tcp::connection_active(10);
 
-        if let Some(handle) = metrics::get_handle() {
-            let output = handle.render();
-            assert!(
-                output.contains("tcp_connections_active"),
-                "Metrics output should contain tcp_connections_active"
-            );
-        }
+        let handle = metrics::get_handle();
+        assert!(handle.is_some(), "Metrics handle should be available");
+        let output = handle.unwrap().render();
+        assert!(
+            output.contains("tcp_connections_active"),
+            "Metrics output should contain tcp_connections_active, got: {}",
+            output
+        );
     }
 
     #[tokio::test]
@@ -509,30 +512,34 @@ mod unit_tests {
         jon_listen::listener::metrics::tcp::connection_rejected();
         jon_listen::listener::metrics::tcp::connection_rejected();
 
-        if let Some(handle) = metrics::get_handle() {
-            let output = handle.render();
-            assert!(
-                output.contains("tcp_connections_rejected"),
-                "Metrics output should contain tcp_connections_rejected"
-            );
-        }
+        let handle = metrics::get_handle();
+        assert!(handle.is_some(), "Metrics handle should be available");
+
+        let output = handle.unwrap().render();
+        assert!(
+            output.contains("tcp_connections_rejected_total")
+                || output.contains("tcp_connections_rejected"),
+            "Metrics output should contain tcp_connections_rejected metric, got: {}",
+            output
+        );
     }
 
     #[tokio::test]
     async fn test_tcp_server_metrics_messages_received() {
+        // Initialize metrics (may fail if already initialized, that's ok)
         let _ = metrics::init(9110);
 
         metrics::messages::received();
         metrics::messages::received();
         metrics::messages::received();
 
-        if let Some(handle) = metrics::get_handle() {
-            let output = handle.render();
-            assert!(
-                output.contains("messages_received_total") || output.contains("messages_received"),
-                "Metrics output should contain messages_received metric, got: {}",
-                output
-            );
-        }
+        let handle = metrics::get_handle();
+        assert!(handle.is_some(), "Metrics handle should be available");
+        let output = handle.unwrap().render();
+        assert!(
+            output.contains("messages_received_total") || output.contains("messages_received"),
+            "Metrics output should contain messages_received metric, got: {}",
+            output
+        );
     }
 }
